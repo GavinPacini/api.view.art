@@ -14,7 +14,7 @@ pub struct Args {
 
 impl Args {
     pub async fn load() -> Result<Self> {
-        dotenvy::dotenv()?;
+        let _ = dotenvy::dotenv().map_err(|err| tracing::error!("dotenvy error: {err}"));
         Ok(Self::parse())
     }
 }
