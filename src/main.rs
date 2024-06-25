@@ -2,25 +2,34 @@ use {
     crate::args::Args,
     anyhow::{Context, Result},
     axum::{
-        response::sse::{Event, Sse},
+        extract::{Path, State},
+        response::{
+            sse::{Event, Sse},
+            IntoResponse,
+        },
         routing::get,
         Router,
     },
     axum_extra::{headers, TypedHeader},
     futures::stream::{self, Stream},
+    redis::aio::MultiplexedConnection,
     std::{
         convert::Infallible,
         net::{Ipv4Addr, SocketAddr},
-        path::PathBuf,
         time::Duration,
     },
     tokio_stream::StreamExt as _,
-    tower_http::{services::ServeDir, trace::TraceLayer},
+    tower_http::trace::TraceLayer,
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
 mod args;
 mod utils;
+
+#[derive(Clone)]
+struct AppState {
+    db: MultiplexedConnection,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,8 +44,22 @@ async fn main() -> Result<()> {
     let args = Args::load().await?;
     tracing::info!("Running with args: {args:?}");
 
+    let db_client = match redis::Client::open::<String>(args.redis_tls_url.into()) {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::error!("Failed to connect to TLS redis: {e} - trying insecure redis");
+            redis::Client::open::<String>(args.redis_url.into())
+                .context("Failed to connect to redis")?
+        }
+    };
+
+    let con = db_client
+        .get_multiplexed_async_connection()
+        .await
+        .context("Failed to connect to Redis")?;
+
     // build our application
-    let app = app();
+    let app = app(AppState { db: con });
 
     // run it
     let listener =
@@ -51,20 +74,27 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn app() -> Router {
-    let assets_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
-    let static_files_service = ServeDir::new(assets_dir).append_index_html_on_directories(true);
+fn app(state: AppState) -> Router {
     // build our application with a route
     Router::new()
-        .fallback_service(static_files_service)
-        .route("/sse", get(sse_handler))
+        .route("/playlist/:address", get(get_playlist).post(set_playlist))
         .layer(TraceLayer::new_for_http())
+        .with_state(state)
 }
 
-async fn sse_handler(
+async fn get_playlist(
+    state: State<AppState>,
     TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
+    Path(address): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    println!("`{}` connected", user_agent.as_str());
+    println!(
+        "get: `{}` connected with address {}",
+        user_agent.as_str(),
+        address
+    );
+
+    let mut db = state.db.clone();
+    // let res = db.get(address.clone()).await;
 
     // A `Stream` that repeats an event every second
     //
@@ -79,6 +109,22 @@ async fn sse_handler(
             .interval(Duration::from_secs(1))
             .text("keep-alive-text"),
     )
+}
+
+async fn set_playlist(
+    state: State<AppState>,
+    TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
+    Path(address): Path<String>,
+) -> impl IntoResponse {
+    println!(
+        "set: `{}` connected with address {}",
+        user_agent.as_str(),
+        address
+    );
+
+    let mut db = state.db.clone();
+    // let res = db.set(address.clone(), b"1").await;
+    format!("set")
 }
 
 #[cfg(test)]
