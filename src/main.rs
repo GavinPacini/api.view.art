@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
 fn app(state: AppState) -> Router {
     // build our application with a route
     Router::new()
-        .route("/playlist/:address", get(get_playlist).post(set_playlist))
+        .route("/v1/playlist/:playlist", get(get_playlist).post(set_playlist))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -85,16 +85,16 @@ fn app(state: AppState) -> Router {
 async fn get_playlist(
     state: State<AppState>,
     TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
-    Path(address): Path<String>,
+    Path(playlist): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     println!(
-        "get: `{}` connected with address {}",
+        "get: `{}` connected with playlist {}",
         user_agent.as_str(),
-        address
+        playlist
     );
 
     let mut db = state.db.clone();
-    // let res = db.get(address.clone()).await;
+    // let res = db.get(playlist.clone()).await;
 
     // A `Stream` that repeats an event every second
     //
@@ -114,16 +114,16 @@ async fn get_playlist(
 async fn set_playlist(
     state: State<AppState>,
     TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
-    Path(address): Path<String>,
+    Path(playlist): Path<String>,
 ) -> impl IntoResponse {
     println!(
-        "set: `{}` connected with address {}",
+        "set: `{}` connected with playlist {}",
         user_agent.as_str(),
-        address
+        playlist
     );
 
     let mut db = state.db.clone();
-    // let res = db.set(address.clone(), b"1").await;
+    // let res = db.set(playlist.clone(), b"1").await;
     format!("set")
 }
 
