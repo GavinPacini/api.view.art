@@ -1,0 +1,20 @@
+#!/bin/zsh
+
+# to use this hook, run: "ln -sf `readlink -f .githooks/pre-commit` .git/hooks/pre-commit" in the root of the repo
+
+set -eu
+
+if ! cargo +nightly fmt --all -- --check
+then
+    echo "There are some code style issues."
+    echo "Run cargo +nightly fmt --all fmt first."
+    exit 1
+fi
+
+if ! cargo clippy --all-targets -- -D warnings
+then
+    echo "There are some clippy issues."
+    exit 1
+fi
+
+exit 0
