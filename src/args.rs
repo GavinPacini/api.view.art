@@ -1,4 +1,4 @@
-use {anyhow::Result, clap::Parser};
+use {crate::utils::secret_string::SecretString, anyhow::Result, clap::Parser};
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -9,7 +9,11 @@ pub struct Args {
 
     /// Redis connection URI
     #[arg(long, env)]
-    pub redis: String,
+    pub redis_url: SecretString,
+
+    /// Redis TLS connection URI
+    #[arg(long, env)]
+    pub redis_tls_url: SecretString,
 }
 
 impl Args {

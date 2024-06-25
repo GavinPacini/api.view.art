@@ -20,6 +20,7 @@ use {
 };
 
 mod args;
+mod utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
