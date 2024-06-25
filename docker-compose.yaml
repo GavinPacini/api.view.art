@@ -1,0 +1,14 @@
+version: '3.1'
+
+services:
+  db:
+    image: valkey/valkey:7.2-alpine
+    restart: always
+    command: valkey-server --save 60 1 --loglevel warning # --requirepass password
+    volumes:
+      - valkey:/data
+    ports:
+      - 6379:6379
+
+volumes:
+  valkey:
