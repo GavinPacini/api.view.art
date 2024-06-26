@@ -44,14 +44,8 @@ async fn main() -> Result<()> {
     let args = Args::load().await?;
     tracing::info!("Running with args: {args:?}");
 
-    let db_client = match redis::Client::open::<String>(args.redis_tls_url.into()) {
-        Ok(client) => client,
-        Err(e) => {
-            tracing::error!("Failed to connect to TLS redis: {e} - trying insecure redis");
-            redis::Client::open::<String>(args.redis_url.into())
-                .context("Failed to connect to redis")?
-        }
-    };
+    let db_client = redis::Client::open::<String>(args.redis_url.into())
+        .context("Failed to connect to redis")?;
 
     let con = db_client
         .get_multiplexed_async_connection()
@@ -77,7 +71,10 @@ async fn main() -> Result<()> {
 fn app(state: AppState) -> Router {
     // build our application with a route
     Router::new()
-        .route("/v1/playlist/:playlist", get(get_playlist).post(set_playlist))
+        .route(
+            "/v1/playlist/:playlist",
+            get(get_playlist).post(set_playlist),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

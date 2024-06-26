@@ -14,11 +14,7 @@ tower-http = { version = "0.5", features = ["full"] }
 futures = "0.3"
 
 # db
-redis = { version = "0.25.3", features = [
-  "tokio-comp",
-  "tokio-rustls-comp",
-  "tls-rustls-insecure", # for heroku, if we stop using heroku, we should remove this
-] }
+redis = { version = "0.25.3", features = ["tokio-comp"] }
 
 # errors, logging, tracing
 anyhow = "1.0"

@@ -10,10 +10,6 @@ pub struct Args {
     /// Redis connection URI
     #[arg(long, env)]
     pub redis_url: SecretString,
-
-    /// Redis TLS connection URI
-    #[arg(long, env)]
-    pub redis_tls_url: SecretString,
 }
 
 impl Args {
