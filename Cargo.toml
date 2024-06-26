@@ -14,7 +14,8 @@ tower-http = { version = "0.5", features = ["full"] }
 futures = "0.3"
 
 # db
-redis = { version = "0.25.3", features = ["tokio-comp"] }
+bb8 = "0.8"
+bb8-redis = "0.15"
 
 # errors, logging, tracing
 anyhow = "1.0"
