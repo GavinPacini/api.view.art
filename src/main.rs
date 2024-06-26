@@ -3,6 +3,7 @@ use {
     anyhow::{Context, Result},
     axum::{
         extract::{Path, State},
+        http::{HeaderValue, Method},
         response::{
             sse::{Event, Sse},
             IntoResponse,
@@ -23,7 +24,7 @@ use {
         time::Duration,
     },
     tokio_stream::wrappers::BroadcastStream,
-    tower_http::trace::TraceLayer,
+    tower_http::{cors::CorsLayer, trace::TraceLayer},
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
@@ -81,6 +82,11 @@ fn app(state: AppState) -> Router {
     Router::new()
         .route("/v1/playlist/:player", get(get_playlist).post(set_playlist))
         .layer(TraceLayer::new_for_http())
+        .layer(
+            CorsLayer::new()
+                .allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap())
+                .allow_methods([Method::GET, Method::POST, Method::OPTIONS]),
+        )
         .with_state(state)
 }
 
@@ -112,7 +118,9 @@ async fn get_playlist(
 
     let stream = BroadcastStream::new(rx).map(|playlist| {
         let event = match playlist {
-            Ok(playlist) => Event::default().data(json!({ "playlist": playlist }).to_string()),
+            Ok(playlist) => Event::default()
+                .data(json!({ "playlist": playlist }).to_string())
+                .event("playlist"),
             Err(err) => {
                 tracing::error!("Error getting playlist: {:?}", err);
                 Event::default()
