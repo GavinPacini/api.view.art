@@ -90,7 +90,7 @@ async fn get_playlist(
         playlist
     );
 
-    let mut db = state.db.clone();
+    let mut _db = state.db.clone();
     // let res = db.get(playlist.clone()).await;
 
     // A `Stream` that repeats an event every second
@@ -119,9 +119,9 @@ async fn set_playlist(
         playlist
     );
 
-    let mut db = state.db.clone();
+    let mut _db = state.db.clone();
     // let res = db.set(playlist.clone(), b"1").await;
-    format!("set")
+    "set"
 }
 
 #[cfg(test)]
@@ -138,8 +138,15 @@ mod tests {
             let listener = TcpListener::bind(format!("{}:0", host)).await.unwrap();
             // Retrieve the port assigned to us by the OS
             let port = listener.local_addr().unwrap().port();
+
+            let db_client = redis::Client::open("redis://localhost:6379").unwrap();
+
+            let con = db_client.get_multiplexed_async_connection().await.unwrap();
+
             tokio::spawn(async {
-                axum::serve(listener, app()).await.unwrap();
+                axum::serve(listener, app(AppState { db: con }))
+                    .await
+                    .unwrap();
             });
             // Returns address (e.g. http://127.0.0.1{random_port})
             format!("http://{}:{}", host, port)
@@ -147,7 +154,7 @@ mod tests {
         let listening_url = spawn_app("127.0.0.1").await;
 
         let mut event_stream = reqwest::Client::new()
-            .get(&format!("{}/sse", listening_url))
+            .get(&format!("{}/v1/playlist/test", listening_url))
             .header("User-Agent", "integration_test")
             .send()
             .await
