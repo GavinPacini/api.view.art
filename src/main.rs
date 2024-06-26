@@ -3,7 +3,7 @@ use {
     anyhow::{Context, Result},
     axum::{
         extract::{Path, State},
-        http::{HeaderValue, Method},
+        http::{HeaderValue, Method, StatusCode},
         response::{
             sse::{Event, Sse},
             IntoResponse,
@@ -101,8 +101,10 @@ async fn get_playlist(
         player
     );
 
-    let mut db = state.db.clone();
-    let res: RedisResult<u32> = db.get(player.clone()).await;
+    let res: RedisResult<u32> = {
+        let mut db = state.db.clone();
+        db.get(player.clone()).await
+    };
 
     let initial_playlist = match res {
         Ok(playlist) => playlist,
@@ -112,9 +114,10 @@ async fn get_playlist(
         }
     };
 
-    let mut changes = state.changes.clone();
-
-    let (tx, rx) = changes.subscribe(player.clone()).await;
+    let (tx, rx) = {
+        let mut changes = state.changes.clone();
+        changes.subscribe(player.clone()).await
+    };
 
     let stream = BroadcastStream::new(rx).map(|playlist| {
         let event = match playlist {
@@ -163,16 +166,21 @@ async fn set_playlist(
         player
     );
 
-    let mut db = state.db.clone();
-    let res: RedisResult<()> = db.set(&player, playlist).await;
+    let res: RedisResult<()> = {
+        let mut db = state.db.clone();
+        db.set(&player, playlist).await
+    };
 
-    if res.is_err() {
-        tracing::error!("Error setting playlist for player {}", player);
+    if let Err(err) = res {
+        tracing::error!("Error setting playlist for player {}: {:?}", player, err);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({ "status": false }).to_string(),
+        )
+    } else {
+        state.changes.broadcast(&player, playlist).await;
+        (StatusCode::OK, json!({ "status": true }).to_string())
     }
-
-    state.changes.broadcast(&player, playlist).await;
-
-    json!({ "status": res.is_ok() }).to_string()
 }
 
 // #[cfg(test)]
