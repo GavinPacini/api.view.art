@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 # runtime, async, networking
 tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1.15"
+tokio-stream = { version = "0.1.15", features = ["sync"] }
 axum = "0.7"
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = { version = "0.4", features = ["full"] }
