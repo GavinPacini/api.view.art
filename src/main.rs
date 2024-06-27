@@ -90,7 +90,10 @@ fn app(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(
             CorsLayer::new()
-                .allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap())
+                .allow_origin([
+                    "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+                    "https://view.art".parse::<HeaderValue>().unwrap(),
+                ])
                 .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                 .allow_headers([header::ACCEPT, header::CONTENT_TYPE]),
         )
