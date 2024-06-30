@@ -3,7 +3,7 @@ on:
   pull_request:
   # For the cache to be usable in PRs we need the job on the main branch too.
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   clippy:
