@@ -16,7 +16,7 @@ use {
     bb8_redis::{redis::AsyncCommands, RedisConnectionManager},
     changes::Changes,
     futures::{stream::Stream, StreamExt},
-    serde::Deserialize,
+    serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
         convert::Infallible,
@@ -157,7 +157,7 @@ async fn get_playlist(
     )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct SetPlaylist {
     playlist: u32,
 }
@@ -199,64 +199,93 @@ where
     )
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use {super::*, eventsource_stream::Eventsource, tokio::net::TcpListener};
+#[cfg(test)]
+mod tests {
+    use {super::*, eventsource_stream::Eventsource, tokio::net::TcpListener};
 
-//     #[tokio::test]
-//     async fn integration_test() {
-//         // A helper function that spawns our application in the background
-//         async fn spawn_app(host: impl Into<String>) -> String {
-//             let host = host.into();
-//             // Bind to localhost at the port 0, which will let the OS assign
-// an available             // port to us
-//             let listener = TcpListener::bind(format!("{}:0",
-// host)).await.unwrap();             // Retrieve the port assigned to us by the
-// OS             let port = listener.local_addr().unwrap().port();
+    const REDIS_URL: &str = "redis://localhost:6379";
 
-//             let db_client =
-// redis::Client::open("redis://localhost:6379").unwrap();
+    /// A helper function that spawns our application in the background
+    async fn spawn_app(host: impl Into<String>) -> String {
+        let host = host.into();
 
-//             let con =
-// db_client.get_multiplexed_async_connection().await.unwrap();
+        let listener = TcpListener::bind(format!("{}:0", host)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
 
-//             tokio::spawn(async {
-//                 axum::serve(listener, app(AppState { db: con }))
-//                     .await
-//                     .unwrap();
-//             });
-//             // Returns address (e.g. http://127.0.0.1{random_port})
-//             format!("http://{}:{}", host, port)
-//         }
-//         let listening_url = spawn_app("127.0.0.1").await;
+        let manager = RedisConnectionManager::new(REDIS_URL).unwrap();
+        let pool = Pool::builder().build(manager).await.unwrap();
+        {
+            // flush redis before starting
+            let mut conn = pool.get().await.unwrap();
+            let _: () = bb8_redis::redis::cmd("FLUSHALL")
+                .query_async(&mut *conn)
+                .await
+                .unwrap();
+        }
+        tracing::debug!("successfully connected to redis and pinged it");
 
-//         let mut event_stream = reqwest::Client::new()
-//             .get(&format!("{}/v1/playlist/test", listening_url))
-//             .header("User-Agent", "integration_test")
-//             .send()
-//             .await
-//             .unwrap()
-//             .bytes_stream()
-//             .eventsource()
-//             .take(1);
+        let changes = Changes::new();
 
-//         let mut event_data: Vec<String> = vec![];
-//         while let Some(event) = event_stream.next().await {
-//             match event {
-//                 Ok(event) => {
-//                     // break the loop at the end of SSE stream
-//                     if event.data == "[DONE]" {
-//                         break;
-//                     }
+        tokio::spawn(async {
+            axum::serve(listener, app(AppState { pool, changes }))
+                .await
+                .unwrap();
+        });
+        // Returns address (e.g. http://127.0.0.1{random_port})
+        format!("http://{}:{}", host, port)
+    }
 
-//                     event_data.push(event.data);
-//                 }
-//                 Err(_) => {
-//                     panic!("Error in event stream");
-//                 }
-//             }
-//         }
+    #[tokio::test]
+    async fn integration_test() {
+        let listening_url = spawn_app("127.0.0.1").await;
 
-//         assert!(event_data[0] == "hi!");
-//     }
-// }
+        let mut event_stream = reqwest::Client::new()
+            .get(&format!("{}/v1/playlist/test", listening_url))
+            .header("User-Agent", "integration_test")
+            .send()
+            .await
+            .unwrap()
+            .bytes_stream()
+            .eventsource()
+            .take(2);
+
+        let mut i = 0;
+        while let Some(event) = event_stream.next().await {
+            match event {
+                Ok(event) => {
+                    assert!(event.event == "playlist");
+
+                    match i {
+                        0 => {
+                            let playlist =
+                                serde_json::from_str::<SetPlaylist>(&event.data).unwrap();
+                            assert!(playlist.playlist == 0);
+
+                            // set playlist to 1
+                            reqwest::Client::new()
+                                .post(&format!("{}/v1/playlist/test", listening_url))
+                                .header("User-Agent", "integration_test")
+                                .json(&SetPlaylist { playlist: 1 })
+                                .send()
+                                .await
+                                .unwrap();
+                        }
+                        1 => {
+                            let playlist =
+                                serde_json::from_str::<SetPlaylist>(&event.data).unwrap();
+                            assert!(playlist.playlist == 1);
+                        }
+                        _ => {
+                            panic!("Unexpected event");
+                        }
+                    }
+
+                    i += 1;
+                }
+                Err(_) => {
+                    panic!("Error in event stream");
+                }
+            }
+        }
+    }
+}

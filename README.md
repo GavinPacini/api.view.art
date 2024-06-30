@@ -6,7 +6,13 @@ You can use a pre-commit hook to ensure that there are no formatting issues and 
 
 ## Testing
 
-TODO
+Requires [nextest](https://nexte.st/) and [docker-compose](https://docs.docker.com/compose/).
+
+Note: this flushes the redis database before running the tests.
+
+1. Run required services: `docker compose up`.
+2. Run the tests: `cargo nextest run`.
+3. Stop the services and remove volumes: `docker compose down -v`.
 
 ## Running
 
