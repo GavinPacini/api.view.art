@@ -16,7 +16,7 @@ use {
     bb8_redis::{redis::AsyncCommands, RedisConnectionManager},
     changes::Changes,
     futures::{stream::Stream, StreamExt},
-    serde::{Deserialize, Serialize},
+    model::PlaylistData,
     serde_json::json,
     std::{
         convert::Infallible,
@@ -30,6 +30,7 @@ use {
 
 mod args;
 mod changes;
+mod model;
 mod utils;
 
 #[derive(Clone)]
@@ -112,12 +113,18 @@ async fn get_playlist(
                 Ok(playlist) => playlist,
                 Err(err) => {
                     tracing::error!("Error getting playlist for channel {}: {:?}", channel, err);
-                    0
+                    PlaylistData {
+                        playlist: 0,
+                        offset: 0,
+                    }
                 }
             },
             Err(err) => {
                 tracing::error!("Error getting connection from pool: {:?}", err);
-                0
+                PlaylistData {
+                    playlist: 0,
+                    offset: 0,
+                }
             }
         }
     };
@@ -130,7 +137,8 @@ async fn get_playlist(
     let stream = BroadcastStream::new(rx).map(|playlist| {
         let event = match playlist {
             Ok(playlist) => Event::default()
-                .data(json!({ "playlist": playlist }).to_string())
+                .json_data(playlist)
+                .unwrap()
                 .event("playlist"),
             Err(err) => {
                 tracing::error!("Error getting playlist: {:?}", err);
@@ -157,20 +165,18 @@ async fn get_playlist(
     )
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct SetPlaylist {
-    playlist: u32,
-}
-
 async fn set_playlist(
     state: State<AppState>,
     Path(channel): Path<String>,
-    Json(SetPlaylist { playlist }): Json<SetPlaylist>,
+    Json(playlist): Json<PlaylistData>,
 ) -> impl IntoResponse {
     tracing::info!("set playlist for channel {}", channel);
 
     match state.pool.get().await {
-        Ok(mut conn) => match conn.set::<&str, u32, ()>(&channel, playlist).await {
+        Ok(mut conn) => match conn
+            .set::<&str, String, ()>(&channel, serde_json::to_string(&playlist).unwrap())
+            .await
+        {
             Ok(_) => {
                 state.changes.broadcast(&channel, playlist).await;
                 (StatusCode::OK, json!({ "status": true }).to_string())
@@ -247,7 +253,7 @@ mod tests {
             .unwrap()
             .bytes_stream()
             .eventsource()
-            .take(2);
+            .take(3);
 
         let mut i = 0;
         while let Some(event) = event_stream.next().await {
@@ -258,22 +264,45 @@ mod tests {
                     match i {
                         0 => {
                             let playlist =
-                                serde_json::from_str::<SetPlaylist>(&event.data).unwrap();
+                                serde_json::from_str::<PlaylistData>(&event.data).unwrap();
                             assert!(playlist.playlist == 0);
+                            assert!(playlist.offset == 0);
 
                             // set playlist to 1
                             reqwest::Client::new()
                                 .post(&format!("{}/v1/playlist/test", listening_url))
                                 .header("User-Agent", "integration_test")
-                                .json(&SetPlaylist { playlist: 1 })
+                                .json(&PlaylistData {
+                                    playlist: 1,
+                                    offset: 0,
+                                })
                                 .send()
                                 .await
                                 .unwrap();
                         }
                         1 => {
                             let playlist =
-                                serde_json::from_str::<SetPlaylist>(&event.data).unwrap();
+                                serde_json::from_str::<PlaylistData>(&event.data).unwrap();
                             assert!(playlist.playlist == 1);
+                            assert!(playlist.offset == 0);
+
+                            // set offset to 1
+                            reqwest::Client::new()
+                                .post(&format!("{}/v1/playlist/test", listening_url))
+                                .header("User-Agent", "integration_test")
+                                .json(&PlaylistData {
+                                    playlist: 1,
+                                    offset: 1,
+                                })
+                                .send()
+                                .await
+                                .unwrap();
+                        }
+                        2 => {
+                            let playlist =
+                                serde_json::from_str::<PlaylistData>(&event.data).unwrap();
+                            assert!(playlist.playlist == 1);
+                            assert!(playlist.offset == 1);
                         }
                         _ => {
                             panic!("Unexpected event");
@@ -287,5 +316,7 @@ mod tests {
                 }
             }
         }
+
+        assert!(i == 3);
     }
 }
