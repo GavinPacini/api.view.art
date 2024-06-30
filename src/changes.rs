@@ -24,7 +24,7 @@ impl Changes {
         match sender {
             Some(channel) => (channel.clone(), channel.subscribe()),
             None => {
-                let (tx, rx) = tokio::sync::broadcast::channel(5);
+                let (tx, rx) = tokio::sync::broadcast::channel(20);
                 self.channels.write().await.insert(player, tx.clone());
                 (tx, rx)
             }
