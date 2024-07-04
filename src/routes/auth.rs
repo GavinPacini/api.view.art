@@ -33,9 +33,9 @@ pub async fn get_nonce(
     state: State<AppState>,
     Json(GetAuth { address, chain_id }): Json<GetAuth>,
 ) -> impl IntoResponse {
-    let random_nonce = generate_nonce();
+    tracing::info!("getting nonce for {:?}", address);
 
-    tracing::debug!("address: {:?}", address);
+    let random_nonce = generate_nonce();
 
     match state.pool.get().await {
         Ok(mut conn) => match conn
@@ -66,6 +66,8 @@ pub async fn verify_auth(
     state: State<AppState>,
     Json(VerifyAuth { message, signature }): Json<VerifyAuth>,
 ) -> impl IntoResponse {
+    tracing::info!("verifying auth for {:?}", message.address);
+
     let address = Address::from(message.address);
     let chain_id = message.chain_id;
 
@@ -104,29 +106,13 @@ pub async fn verify_auth(
                             exp: Utc::now().timestamp() + 30 * 24 * 60 * 60,
                         };
 
-                        let token = match encode(&Header::default(), &claims, &state.keys.encoding)
-                        {
-                            Ok(token) => token,
+                        match encode(&Header::default(), &claims, &state.keys.encoding) {
+                            Ok(token) => (
+                                StatusCode::OK,
+                                json!({ "status": true, "token": token }).to_string(),
+                            ),
                             Err(err) => {
                                 tracing::error!("Error encoding token: {:?}", err);
-                                return internal_error(anyhow!(err));
-                            }
-                        };
-
-                        // set token in redis
-                        match conn
-                            .set::<&str, String, ()>(&format!("token:{:?}", address), token.clone())
-                            .await
-                        {
-                            Ok(_) => {
-                                tracing::debug!("token set");
-                                (
-                                    StatusCode::OK,
-                                    json!({ "status": true, "token": token }).to_string(),
-                                )
-                            }
-                            Err(err) => {
-                                tracing::error!("Error setting token: {:?}", err);
                                 internal_error(anyhow!(err))
                             }
                         }
