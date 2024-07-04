@@ -5,6 +5,7 @@ use {
         self,
         http::{header, HeaderValue, Method},
         routing::{get, post},
+        Extension,
         Router,
     },
     bb8::Pool,
@@ -12,6 +13,7 @@ use {
     changes::Changes,
     ethers::providers::{Http, Middleware, Provider},
     model::PlaylistData,
+    routes::auth::Keys,
     std::net::{Ipv4Addr, SocketAddr},
     tower_http::{cors::CorsLayer, trace::TraceLayer},
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
@@ -28,6 +30,7 @@ struct AppState {
     pool: Pool<RedisConnectionManager>,
     changes: Changes,
     provider: Provider<Http>,
+    keys: Keys,
 }
 
 #[tokio::main]
@@ -58,6 +61,8 @@ async fn main() -> Result<()> {
     let chain_id = provider.get_chainid().await.unwrap();
     tracing::debug!("connected to chain id {:?}", chain_id);
 
+    let keys = Keys::new(String::from(args.jwt_secret).as_bytes());
+
     let changes = Changes::new();
 
     // build our application
@@ -65,6 +70,7 @@ async fn main() -> Result<()> {
         pool,
         changes,
         provider,
+        keys,
     });
 
     // run it
@@ -81,6 +87,7 @@ async fn main() -> Result<()> {
 }
 
 fn app(state: AppState) -> Router {
+    let keys = state.keys.clone();
     // build our application with a route
     Router::new()
         .route("/v1/nonce", post(routes::auth::get_nonce))
@@ -90,6 +97,7 @@ fn app(state: AppState) -> Router {
             get(routes::playlist::get_playlist).post(routes::playlist::set_playlist),
         )
         .layer(TraceLayer::new_for_http())
+        .layer(Extension(keys))
         .layer(
             CorsLayer::new()
                 .allow_origin([
@@ -97,17 +105,24 @@ fn app(state: AppState) -> Router {
                     "https://view.art".parse::<HeaderValue>().unwrap(),
                 ])
                 .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                .allow_headers([header::ACCEPT, header::CONTENT_TYPE]),
+                .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
         )
         .with_state(state)
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, eventsource_stream::Eventsource, futures::StreamExt, tokio::net::TcpListener};
+    use {
+        super::*,
+        eventsource_stream::Eventsource,
+        futures::StreamExt,
+        routes::auth::tests::get_team_api_key,
+        tokio::net::TcpListener,
+    };
 
     const REDIS_URL: &str = "redis://localhost:6379";
     const BASE_RPC_URL: &str = "https://base.drpc.org";
+    const JWT_SECRET: &str = "secret";
 
     /// A helper function that spawns our application in the background
     async fn spawn_app(host: impl Into<String>) -> String {
@@ -141,6 +156,7 @@ mod tests {
                     pool,
                     changes,
                     provider,
+                    keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
                 }),
             )
             .await
@@ -164,6 +180,8 @@ mod tests {
             .eventsource()
             .take(3);
 
+        let authorization = get_team_api_key(JWT_SECRET.to_string());
+
         let mut i = 0;
         while let Some(event) = event_stream.next().await {
             match event {
@@ -177,10 +195,24 @@ mod tests {
                             assert!(playlist.playlist == 0);
                             assert!(playlist.offset == 0);
 
-                            // set playlist to 1
+                            // setting the playlist without the team API key should fail
+                            let result = reqwest::Client::new()
+                                .post(&format!("{}/v1/playlist/test", listening_url))
+                                .header("User-Agent", "integration_test")
+                                .json(&PlaylistData {
+                                    playlist: 1,
+                                    offset: 0,
+                                })
+                                .send()
+                                .await
+                                .unwrap();
+                            assert!(result.status().is_client_error());
+
+                            // set playlist to 1 using the team API key
                             reqwest::Client::new()
                                 .post(&format!("{}/v1/playlist/test", listening_url))
                                 .header("User-Agent", "integration_test")
+                                .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&PlaylistData {
                                     playlist: 1,
                                     offset: 0,
@@ -199,6 +231,7 @@ mod tests {
                             reqwest::Client::new()
                                 .post(&format!("{}/v1/playlist/test", listening_url))
                                 .header("User-Agent", "integration_test")
+                                .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&PlaylistData {
                                     playlist: 1,
                                     offset: 1,
@@ -227,5 +260,10 @@ mod tests {
         }
 
         assert!(i == 3);
+
+        // TODO: create a wallet
+        // TODO: get nonce
+        // TODO: generate and sign SIWE message
+        // TODO: test we can set the channel playlist correctly
     }
 }

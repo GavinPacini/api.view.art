@@ -1,5 +1,11 @@
 use {
-    crate::{model::PlaylistData, routes::internal_error, AppState},
+    super::auth::Claims,
+    crate::{
+        model::PlaylistData,
+        routes::internal_error,
+        utils::url_factory::generate_url_from_address,
+        AppState,
+    },
     anyhow::{anyhow, Result},
     axum::{
         extract::{Path, State},
@@ -82,11 +88,28 @@ pub async fn get_playlist(
 }
 
 pub async fn set_playlist(
+    claims: Claims,
     state: State<AppState>,
     Path(channel): Path<String>,
     Json(playlist): Json<PlaylistData>,
 ) -> impl IntoResponse {
-    tracing::info!("set playlist for channel {}", channel);
+    tracing::info!(
+        "set playlist for channel {}, owned by {:?}",
+        channel,
+        claims.address
+    );
+
+    // Currently admin can set any channel
+    // TODO: Investigate if we want this or not
+    if !claims.address.is_zero() {
+        let channel_url = generate_url_from_address(claims.address);
+        if channel != channel_url {
+            return (
+                StatusCode::BAD_REQUEST,
+                json!({ "status": false, "error": "invalid channel" }).to_string(),
+            );
+        }
+    }
 
     match state.pool.get().await {
         Ok(mut conn) => match conn

@@ -14,6 +14,10 @@ pub struct Args {
     /// Base RPC URL
     #[arg(long, env)]
     pub base_rpc_url: SecretString,
+
+    /// Secret key for JWT
+    #[arg(long, env)]
+    pub jwt_secret: SecretString,
 }
 
 impl Args {
