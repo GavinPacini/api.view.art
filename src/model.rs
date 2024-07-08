@@ -1,7 +1,22 @@
 use {
     bb8_redis::redis::{FromRedisValue, RedisError, RedisResult, Value},
+    ethers::types::Address,
     serde::{Deserialize, Serialize},
+    siwe::Message,
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAuth {
+    pub address: Address,
+    pub chain_id: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyAuth {
+    pub message: Message,
+    pub signature: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaylistData {

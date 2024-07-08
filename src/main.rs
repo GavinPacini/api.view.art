@@ -2,28 +2,19 @@ use {
     crate::args::Args,
     anyhow::{Context, Result},
     axum::{
-        extract::{Path, State},
-        http::{header, HeaderValue, Method, StatusCode},
-        response::{
-            sse::{Event, Sse},
-            IntoResponse,
-        },
-        routing::get,
-        Json,
+        self,
+        http::{header, HeaderValue, Method},
+        routing::{get, post},
+        Extension,
         Router,
     },
     bb8::Pool,
     bb8_redis::{redis::AsyncCommands, RedisConnectionManager},
     changes::Changes,
-    futures::{stream::Stream, StreamExt},
+    ethers::providers::{Http, Middleware, Provider},
     model::PlaylistData,
-    serde_json::json,
-    std::{
-        convert::Infallible,
-        net::{Ipv4Addr, SocketAddr},
-        time::Duration,
-    },
-    tokio_stream::wrappers::BroadcastStream,
+    routes::auth::Keys,
+    std::net::{Ipv4Addr, SocketAddr},
     tower_http::{cors::CorsLayer, trace::TraceLayer},
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
@@ -31,12 +22,15 @@ use {
 mod args;
 mod changes;
 mod model;
+mod routes;
 mod utils;
 
 #[derive(Clone)]
 struct AppState {
     pool: Pool<RedisConnectionManager>,
     changes: Changes,
+    provider: Provider<Http>,
+    keys: Keys,
 }
 
 #[tokio::main]
@@ -63,10 +57,21 @@ async fn main() -> Result<()> {
     }
     tracing::debug!("successfully connected to redis and pinged it");
 
+    let provider = Provider::<Http>::try_from(String::from(args.base_rpc_url)).unwrap();
+    let chain_id = provider.get_chainid().await.unwrap();
+    tracing::debug!("connected to chain id {:?}", chain_id);
+
+    let keys = Keys::new(String::from(args.jwt_secret).as_bytes());
+
     let changes = Changes::new();
 
     // build our application
-    let app = app(AppState { pool, changes });
+    let app = app(AppState {
+        pool,
+        changes,
+        provider,
+        keys,
+    });
 
     // run it
     let listener =
@@ -82,13 +87,17 @@ async fn main() -> Result<()> {
 }
 
 fn app(state: AppState) -> Router {
+    let keys = state.keys.clone();
     // build our application with a route
     Router::new()
+        .route("/v1/nonce", post(routes::auth::get_nonce))
+        .route("/v1/auth", post(routes::auth::verify_auth))
         .route(
             "/v1/playlist/:channel",
-            get(get_playlist).post(set_playlist),
+            get(routes::playlist::get_playlist).post(routes::playlist::set_playlist),
         )
         .layer(TraceLayer::new_for_http())
+        .layer(Extension(keys))
         .layer(
             CorsLayer::new()
                 .allow_origin([
@@ -96,120 +105,24 @@ fn app(state: AppState) -> Router {
                     "https://view.art".parse::<HeaderValue>().unwrap(),
                 ])
                 .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                .allow_headers([header::ACCEPT, header::CONTENT_TYPE]),
+                .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
         )
         .with_state(state)
 }
 
-async fn get_playlist(
-    state: State<AppState>,
-    Path(channel): Path<String>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    tracing::info!("get playlist for channel {}", channel);
-
-    let initial_playlist = {
-        match state.pool.get().await {
-            Ok(mut conn) => match conn.get(&channel).await {
-                Ok(playlist) => playlist,
-                Err(err) => {
-                    tracing::error!("Error getting playlist for channel {}: {:?}", channel, err);
-                    PlaylistData {
-                        playlist: 0,
-                        offset: 0,
-                    }
-                }
-            },
-            Err(err) => {
-                tracing::error!("Error getting connection from pool: {:?}", err);
-                PlaylistData {
-                    playlist: 0,
-                    offset: 0,
-                }
-            }
-        }
-    };
-
-    let (tx, rx) = {
-        let mut changes = state.changes.clone();
-        changes.subscribe(channel.clone()).await
-    };
-
-    let stream = BroadcastStream::new(rx).map(|playlist| {
-        let event = match playlist {
-            Ok(playlist) => Event::default()
-                .json_data(playlist)
-                .unwrap()
-                .event("playlist"),
-            Err(err) => {
-                tracing::error!("Error getting playlist: {:?}", err);
-                Event::default()
-            }
-        };
-
-        Ok::<Event, Infallible>(event)
-    });
-
-    match tx.send(initial_playlist) {
-        Ok(len) => {
-            tracing::debug!("sent {} to {} receivers", channel, len);
-        }
-        Err(err) => {
-            tracing::error!("Error sending initial playlist: {:?}", err);
-        }
-    }
-
-    Sse::new(stream).keep_alive(
-        axum::response::sse::KeepAlive::new()
-            .interval(Duration::from_secs(1))
-            .text("keep-alive-text"),
-    )
-}
-
-async fn set_playlist(
-    state: State<AppState>,
-    Path(channel): Path<String>,
-    Json(playlist): Json<PlaylistData>,
-) -> impl IntoResponse {
-    tracing::info!("set playlist for channel {}", channel);
-
-    match state.pool.get().await {
-        Ok(mut conn) => match conn
-            .set::<&str, String, ()>(&channel, serde_json::to_string(&playlist).unwrap())
-            .await
-        {
-            Ok(_) => {
-                state.changes.broadcast(&channel, playlist).await;
-                (StatusCode::OK, json!({ "status": true }).to_string())
-            }
-            Err(err) => {
-                tracing::error!("Error setting playlist for channel {}: {:?}", channel, err);
-                internal_error(err)
-            }
-        },
-        Err(err) => {
-            tracing::error!("Error getting connection from pool: {:?}", err);
-            internal_error(err)
-        }
-    }
-}
-
-/// Utility function for mapping any error into a `500 Internal Server Error`
-/// response.
-fn internal_error<E>(err: E) -> (StatusCode, String)
-where
-    E: std::error::Error,
-{
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        json!({ "status": false, "error": err.to_string() }).to_string(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use {super::*, eventsource_stream::Eventsource, tokio::net::TcpListener};
+    use {
+        super::*,
+        eventsource_stream::Eventsource,
+        futures::StreamExt,
+        routes::auth::tests::get_team_api_key,
+        tokio::net::TcpListener,
+    };
 
     const REDIS_URL: &str = "redis://localhost:6379";
+    const BASE_RPC_URL: &str = "https://base.drpc.org";
+    const JWT_SECRET: &str = "secret";
 
     /// A helper function that spawns our application in the background
     async fn spawn_app(host: impl Into<String>) -> String {
@@ -230,12 +143,24 @@ mod tests {
         }
         tracing::debug!("successfully connected to redis and pinged it");
 
+        let provider = Provider::<Http>::try_from(BASE_RPC_URL).unwrap();
+        let chain_id = provider.get_chainid().await.unwrap();
+        tracing::debug!("connected to chain id {:?}", chain_id);
+
         let changes = Changes::new();
 
         tokio::spawn(async {
-            axum::serve(listener, app(AppState { pool, changes }))
-                .await
-                .unwrap();
+            axum::serve(
+                listener,
+                app(AppState {
+                    pool,
+                    changes,
+                    provider,
+                    keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
+                }),
+            )
+            .await
+            .unwrap();
         });
         // Returns address (e.g. http://127.0.0.1{random_port})
         format!("http://{}:{}", host, port)
@@ -255,6 +180,8 @@ mod tests {
             .eventsource()
             .take(3);
 
+        let authorization = get_team_api_key(JWT_SECRET.to_string());
+
         let mut i = 0;
         while let Some(event) = event_stream.next().await {
             match event {
@@ -268,10 +195,24 @@ mod tests {
                             assert!(playlist.playlist == 0);
                             assert!(playlist.offset == 0);
 
-                            // set playlist to 1
+                            // setting the playlist without the team API key should fail
+                            let result = reqwest::Client::new()
+                                .post(&format!("{}/v1/playlist/test", listening_url))
+                                .header("User-Agent", "integration_test")
+                                .json(&PlaylistData {
+                                    playlist: 1,
+                                    offset: 0,
+                                })
+                                .send()
+                                .await
+                                .unwrap();
+                            assert!(result.status().is_client_error());
+
+                            // set playlist to 1 using the team API key
                             reqwest::Client::new()
                                 .post(&format!("{}/v1/playlist/test", listening_url))
                                 .header("User-Agent", "integration_test")
+                                .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&PlaylistData {
                                     playlist: 1,
                                     offset: 0,
@@ -290,6 +231,7 @@ mod tests {
                             reqwest::Client::new()
                                 .post(&format!("{}/v1/playlist/test", listening_url))
                                 .header("User-Agent", "integration_test")
+                                .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&PlaylistData {
                                     playlist: 1,
                                     offset: 1,
@@ -318,5 +260,10 @@ mod tests {
         }
 
         assert!(i == 3);
+
+        // TODO: create a wallet
+        // TODO: get nonce
+        // TODO: generate and sign SIWE message
+        // TODO: test we can set the channel playlist correctly
     }
 }

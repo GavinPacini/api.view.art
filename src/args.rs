@@ -10,6 +10,14 @@ pub struct Args {
     /// Redis connection URI
     #[arg(long, env)]
     pub redis_url: SecretString,
+
+    /// Base RPC URL
+    #[arg(long, env)]
+    pub base_rpc_url: SecretString,
+
+    /// Secret key for JWT
+    #[arg(long, env)]
+    pub jwt_secret: SecretString,
 }
 
 impl Args {
