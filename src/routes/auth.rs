@@ -66,10 +66,10 @@ pub async fn verify_auth(
     state: State<AppState>,
     Json(VerifyAuth { message, signature }): Json<VerifyAuth>,
 ) -> impl IntoResponse {
-    tracing::info!("verifying auth for {:?}", message.address);
-
     let address = Address::from(message.address);
     let chain_id = message.chain_id;
+
+    tracing::info!("verifying auth for {:?}", address);
 
     match state.pool.get().await {
         Ok(mut conn) => match conn
