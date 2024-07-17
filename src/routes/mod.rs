@@ -1,7 +1,7 @@
 use {axum::http::StatusCode, serde_json::json};
 
 pub mod auth;
-pub mod playlist;
+pub mod channel;
 
 /// Utility function for mapping any error into a `500 Internal Server Error`
 /// response.

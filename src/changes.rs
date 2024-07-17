@@ -1,5 +1,5 @@
 use {
-    crate::PlaylistData,
+    crate::model::ChannelContent,
     std::{collections::HashMap, sync::Arc},
     tokio::sync::{
         broadcast::{Receiver, Sender},
@@ -7,9 +7,11 @@ use {
     },
 };
 
+type BroadcastItem = Option<ChannelContent>;
+
 #[derive(Debug, Clone)]
 pub struct Changes {
-    channels: Arc<RwLock<HashMap<String, Sender<PlaylistData>>>>,
+    channels: Arc<RwLock<HashMap<String, Sender<BroadcastItem>>>>,
 }
 
 impl Changes {
@@ -22,7 +24,7 @@ impl Changes {
     pub async fn subscribe(
         &mut self,
         player: String,
-    ) -> (Sender<PlaylistData>, Receiver<PlaylistData>) {
+    ) -> (Sender<BroadcastItem>, Receiver<BroadcastItem>) {
         let sender = { self.channels.read().await.get(&player).cloned() };
 
         match sender {
@@ -35,11 +37,11 @@ impl Changes {
         }
     }
 
-    pub async fn broadcast(&self, player: &str, playlist: PlaylistData) {
+    pub async fn broadcast(&self, player: &str, channel_content: ChannelContent) {
         let sender = { self.channels.read().await.get(player).cloned() };
 
         match sender {
-            Some(sender) => match sender.send(playlist) {
+            Some(sender) => match sender.send(Some(channel_content)) {
                 Ok(len) => {
                     tracing::debug!("sent {} to {} receivers", player, len);
                 }

@@ -1,7 +1,7 @@
 use {
     super::auth::Claims,
     crate::{
-        model::PlaylistData,
+        model::{ChannelContent, EmptyChannelContent},
         routes::internal_error,
         utils::url_factory::generate_url_from_address,
         AppState,
@@ -23,47 +23,50 @@ use {
     tokio_stream::wrappers::BroadcastStream,
 };
 
-pub async fn get_playlist(
+pub async fn get_channel(
     state: State<AppState>,
     Path(channel): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    tracing::info!("get playlist for channel {}", channel);
+    tracing::info!("get content for channel {}", channel);
 
-    let initial_playlist = {
+    // get content from DB if set
+    let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
             Ok(mut conn) => match conn.get(&channel).await {
-                Ok(playlist) => playlist,
+                Ok(content) => Some(content),
                 Err(err) => {
-                    tracing::error!("Error getting playlist for channel {}: {:?}", channel, err);
-                    PlaylistData {
-                        playlist: 0,
-                        offset: 0,
-                    }
+                    tracing::error!("Error getting content for channel {}: {:?}", channel, err);
+                    None
                 }
             },
             Err(err) => {
                 tracing::error!("Error getting connection from pool: {:?}", err);
-                PlaylistData {
-                    playlist: 0,
-                    offset: 0,
-                }
+                None
             }
         }
     };
 
+    // subscribe to changes
     let (tx, rx) = {
         let mut changes = state.changes.clone();
         changes.subscribe(channel.clone()).await
     };
 
-    let stream = BroadcastStream::new(rx).map(|playlist| {
-        let event = match playlist {
-            Ok(playlist) => Event::default()
-                .json_data(playlist)
-                .unwrap()
-                .event("playlist"),
+    // map changes of channel content to SSE events
+    let stream = BroadcastStream::new(rx).map(|content| {
+        let event = match content {
+            Ok(content) => match content {
+                Some(content) => Event::default()
+                    .json_data(content)
+                    .unwrap()
+                    .event("content"),
+                None => Event::default()
+                    .json_data(EmptyChannelContent::default())
+                    .unwrap()
+                    .event("content"),
+            },
             Err(err) => {
-                tracing::error!("Error getting playlist: {:?}", err);
+                tracing::error!("Error getting content: {:?}", err);
                 Event::default()
             }
         };
@@ -71,15 +74,16 @@ pub async fn get_playlist(
         Ok::<Event, Infallible>(event)
     });
 
-    match tx.send(initial_playlist) {
+    // send initial content to subscribers
+    match tx.send(initial_content) {
         Ok(len) => {
             tracing::debug!("sent {} to {} receivers", channel, len);
         }
         Err(err) => {
-            tracing::error!("Error sending initial playlist: {:?}", err);
+            tracing::error!("Error sending initial content: {:?}", err);
         }
     }
-
+    // return SSE stream
     Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
             .interval(Duration::from_secs(1))
@@ -87,14 +91,14 @@ pub async fn get_playlist(
     )
 }
 
-pub async fn set_playlist(
+pub async fn set_channel(
     claims: Claims,
     state: State<AppState>,
     Path(channel): Path<String>,
-    Json(playlist): Json<PlaylistData>,
+    Json(channel_content): Json<ChannelContent>,
 ) -> impl IntoResponse {
     tracing::info!(
-        "set playlist for channel {}, owned by {:?}",
+        "set channel content for {}, owned by {:?}",
         channel,
         claims.address
     );
@@ -113,15 +117,15 @@ pub async fn set_playlist(
 
     match state.pool.get().await {
         Ok(mut conn) => match conn
-            .set::<&str, String, ()>(&channel, serde_json::to_string(&playlist).unwrap())
+            .set::<&str, String, ()>(&channel, serde_json::to_string(&channel_content).unwrap())
             .await
         {
             Ok(_) => {
-                state.changes.broadcast(&channel, playlist).await;
+                state.changes.broadcast(&channel, channel_content).await;
                 (StatusCode::OK, json!({ "status": true }).to_string())
             }
             Err(err) => {
-                tracing::error!("Error setting playlist for channel {}: {:?}", channel, err);
+                tracing::error!("Error setting content for channel {}: {:?}", channel, err);
                 internal_error(anyhow!(err))
             }
         },

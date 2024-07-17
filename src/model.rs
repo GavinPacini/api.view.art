@@ -1,8 +1,10 @@
 use {
     bb8_redis::redis::{FromRedisValue, RedisError, RedisResult, Value},
+    chrono::{DateTime, Utc},
     ethers::types::Address,
     serde::{Deserialize, Serialize},
     siwe::Message,
+    url::Url,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,12 +21,45 @@ pub struct VerifyAuth {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlaylistData {
-    pub playlist: u32,
-    pub offset: u32,
+#[serde(rename_all = "camelCase")]
+pub struct Item {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub url: Url,
+    pub thumbnail_url: Url,
+    pub apply_matte: bool,
+    pub activate_by: String,
 }
 
-impl FromRedisValue for PlaylistData {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Played {
+    pub item: u32,
+    pub at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelContent {
+    // TODO: Should migrate to CDN for images, for now just a blob
+    pub image: String,
+    pub title: String,
+    pub artists: String,
+    pub items: Vec<Item>,
+    pub played: Played,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmptyChannelContent {
+    pub empty: bool,
+}
+
+impl Default for EmptyChannelContent {
+    fn default() -> Self {
+        Self { empty: true }
+    }
+}
+
+impl FromRedisValue for ChannelContent {
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         let s = match v {
             Value::Data(data) => std::str::from_utf8(data).unwrap(),
