@@ -23,16 +23,20 @@ use {
     tokio_stream::wrappers::BroadcastStream,
 };
 
+pub const CHANNEL_KEY: &str = "channel";
+
 pub async fn get_channel(
     state: State<AppState>,
     Path(channel): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     tracing::info!("get content for channel {}", channel);
 
+    let key = format!("{}:{}", CHANNEL_KEY, channel);
+
     // get content from DB if set
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
-            Ok(mut conn) => match conn.get(&channel).await {
+            Ok(mut conn) => match conn.get(&key).await {
                 Ok(content) => Some(content),
                 Err(err) => {
                     tracing::error!("Error getting content for channel {}: {:?}", channel, err);
@@ -83,6 +87,7 @@ pub async fn get_channel(
             tracing::error!("Error sending initial content: {:?}", err);
         }
     }
+
     // return SSE stream
     Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
@@ -115,9 +120,11 @@ pub async fn set_channel(
         }
     }
 
+    let key = format!("{}:{}", CHANNEL_KEY, channel);
+
     match state.pool.get().await {
         Ok(mut conn) => match conn
-            .set::<&str, String, ()>(&channel, serde_json::to_string(&channel_content).unwrap())
+            .set::<&str, String, ()>(&key, serde_json::to_string(&channel_content).unwrap())
             .await
         {
             Ok(_) => {
