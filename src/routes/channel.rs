@@ -19,7 +19,7 @@ use {
     bb8_redis::redis::AsyncCommands,
     futures::{stream::Stream, StreamExt},
     serde_json::json,
-    std::{convert::Infallible, time::Duration},
+    std::{collections::HashSet, convert::Infallible, time::Duration},
     tokio_stream::wrappers::BroadcastStream,
 };
 
@@ -108,6 +108,14 @@ pub async fn set_channel(
         claims.address
     );
 
+    if let Err(err) = validate_channel_content(&channel_content) {
+        tracing::debug!("Error validating channel content: {:?}", err);
+        return (
+            StatusCode::BAD_REQUEST,
+            json!({ "status": false, "error": err.to_string() }).to_string(),
+        );
+    }
+
     // Currently admin can set any channel
     // TODO: Investigate if we want this or not
     if !claims.address.is_zero() {
@@ -141,4 +149,41 @@ pub async fn set_channel(
             internal_error(anyhow!(err))
         }
     }
+}
+
+fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
+    if channel_content.title.len() < 2 || channel_content.title.len() > 100 {
+        return Err(anyhow!("title must be between 2 and 100 characters"));
+    }
+
+    if channel_content.artists.len() < 2 || channel_content.artists.len() > 100 {
+        return Err(anyhow!("artists must be between 2 and 100 characters"));
+    }
+
+    // ensure all ids are unique in items
+    let mut ids = HashSet::new();
+    for item in &channel_content.items {
+        if ids.contains(&item.id) {
+            return Err(anyhow!("duplicate item id: {}", item.id));
+        }
+        ids.insert(item.id.clone());
+    }
+
+    for item in &channel_content.items {
+        if item.title.len() < 2 || item.title.len() > 100 {
+            return Err(anyhow!(
+                "item title must be between 2 and 100 characters, for id {}",
+                item.id
+            ));
+        }
+
+        if item.artist.len() < 2 || item.artist.len() > 100 {
+            return Err(anyhow!(
+                "item artist must be between 2 and 100 characters, for id {}",
+                item.id
+            ));
+        }
+    }
+
+    Ok(())
 }
