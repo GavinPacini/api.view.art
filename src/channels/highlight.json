@@ -1,0 +1,71 @@
+{
+    "played": {
+        "item": 0,
+        "at": "2024-07-18T00:23:44.076Z"
+    },
+    "items": [
+    {
+        "id": "eip155:8453/0xC9D128f88a8d97342a37680F0CE0F34598F289D0/3020",
+        "title": "1,000 True Fans #3020",
+        "artist": "Leander Herzog",
+        "url": "https://woegycrhejqxuzg56z2qaa6xqhbxboonpgrmrsbi2ltqq4nype3q.arweave.net/s4hsCiciYXpk3fZ1AAPXgcNwuc15osjIKNLnCHG4eTc/index.html?t=1693089199&mi=1&gp=0&wa=0x94e7f4BCA302Ef85E094437182CfA0faf050c619&a=0xC9D128f88a8d97342a37680F0CE0F34598F289D0&c=8453&gu=0&bn=3149926&ms=1&tid=3020&h=0xab3331fd4997e0045b673b173a3b89a2a134328f2da2ee6a35f234cedfde6022&bh=0x55529ed04c65e62fac0d0cfcd46e19d46c2d27d1a926e89267fadbbad979449b",
+        "thumbnailUrl": "https://lh3.googleusercontent.com/xAyksOts7VypILGs7IHSxFGcTSD4Gwri449XHQBQGsam8cxROwxvJzahAm4Canl3OMtUVIvudQRB93mVPI0NWjYBd1P3Wo1gxPbK=s250",
+        "applyMatte": false,
+        "activateBy": ""
+    },
+    {
+        "id": "eip155:8453/0xf4f7CDe685F409E4373cF0C5DC8b818046860d77/256",
+        "title": "Crush #256",
+        "artist": "Andreas Gysin",
+        "url": "https://6rkcz2keam3pzmtw26kl526dzccm2hez5l4dr35erllly3dcnbjq.arweave.net/9FQs6UQDNvyydteUvuvDyITNHJnq-DjvpIrWvGxiaFM/",
+        "thumbnailUrl": "https://lh3.googleusercontent.com/eLjKcG1NhRDqslAAnFDDiCNkpGYo3oiYgb0Rmm2Y5e_mYHWKm3ANeYEGs3Q-E-IalKu0A9TVCarBSj3ZppIePaEL0irHfgU1TC0=s250",
+        "applyMatte": false,
+        "activateBy": ""
+    },
+    {
+        "id": "eip155:8453/0xC1739be27821FA207Ba62a52d31B851013e2Cb7F/56",
+        "title": "Heatsink #56",
+        "artist": "Leander Herzog",
+        "url": "https://dnoolgjwvpshxkjqkihirciwo2vpqmqkya2tvvplcvua3ypwkppq.arweave.net/G1zlmTar5HupMFIOiIkWdqr4MgrANTrV6xVoDeH2U98/",
+        "thumbnailUrl": "https://lh3.googleusercontent.com/XRuyWtzIRdlbYefX_EH66-G07mBocPkdsi4xiHuUSKfRflrhzeJotxwGe2T_Ml2sK7q8eE5I9BGA5SOgiza03twM3oopR0ftz88r=s250",
+        "applyMatte": false,
+        "activateBy": ""
+    },
+    {
+        "id": "eip155:8453/0xaE55B142f1cA580B3F67E519eB0F0585F88063a7/9",
+        "title": "ES: #9",
+        "artist": "mchx",
+        "url": "https://hiyshvbb3dwj7ewm4hh65flmvkfcwvgsbeq2hbj7f7cir2ix5wha.arweave.net/OjEj1CHY7J-SzOHP7pVsqoorVNIJIaOFPy_EiOkX7Y4/index.html?t=1692282527&mi=1&gp=31&wa=0xeE9be9846abB49532a03C05FC27A0e4Dbc84e857&a=0xaE55B142f1cA580B3F67E519eB0F0585F88063a7&c=1&s=256&gu=0&bn=17935137&ms=1&tid=9&h=0x5c57eb2cd23c048e2256ab71e943d0ad82c9b323f8f4b7cc2a25b4bf0d3d7dd8&bh=0xb6a303140aa5328ad3f1438c1079538447a903e70bb38db9d2cbe1ac1bf33a58",
+        "thumbnailUrl": "https://lh3.googleusercontent.com/6eQArvED4qDPNapZiaRdFPye5rWpWw0tQwomftE5R6fgtl2PxHcqFSpmGTLeatTXTboRyQjesLGV6VfE_sVHX1TJXe48515tcA=s250",
+        "applyMatte": false,
+        "activateBy": ""
+    },
+    {
+        "id": "eip155:8453/0x06588A87485B11ad55B2DB8BF7345A165E19E3C8/144",
+        "title": "Latitudes #144",
+        "artist": "Aleksandra Jovani",
+        "url": "https://arweave.net/zbXzh_bnO38fOvnRWCpUdY3GS0GaBUE3mQrN3ofkOt4/index.html?&a=0x06588A87485B11ad55B2DB8BF7345A165E19E3C8&c=1&tid=144&h=0x2f4b58aafeb7ddf2760f5c1f173b6f9b9ffa41a70c18181bb3d303b351dca190&bh=0x66588e0a6c77f945d51bb93d915a35768408633e7b2b2b0cffe28642cef5a9cb&bn=18322331&t=1696968383&wa=0x1008d3fbd618d32583e05371dbfc939ac4073956&ms=3&mi=3&s=260&gp=9&gu=0",
+        "thumbnailUrl": "https://lh3.googleusercontent.com/yBLBnEwVsxmqv7_YrXpTAYAOQpMyBmJ4lophXZrlvQ2KqJncZKeDuOrmHRYzRACU3AEZ7nDXIEbk7d3XcdXAbCYgAEsj5S6EUb4=s250",
+        "applyMatte": false,
+        "activateBy": ""
+    },
+    {
+        "id": "eip155:8453/0xAcf975eb1B2920b49E611781E1630267963B32AF/201",
+        "title": "UNICURSE #201",
+        "artist": "Kirsten Bevin",
+        "url": "https://id3lmedqe6jherb4fa7omqbhqvshr24w35yuwxjb3l57iz3kbpsa.arweave.net/QPa2EHAnknJEPCg-5kAnhWR465bfcUtdIdr79GdqC-Q/index.html?t=1694132543&mi=1&gp=13&wa=0xEb7FE1261855483316D1d78d8EabbB7f7579Bf25&a=0xAcf975eb1B2920b49E611781E1630267963B32AF&c=1&s=280&gu=0&bn=18088096&ms=1&tid=201&h=0x34075933a63292300c2def16f7a111d69c8bbc0481eb56e800bc46fe7b17da8c&bh=0xf66d21f1c85284ade5c44f19e3b7b6adef179b40b97bc77ac439f42d98a375a6",
+        "thumbnailUrl": "https://lh3.googleusercontent.com/G2fsmWwA_f_8UYx8AEQKtYch4KJTzC1xRkYC8EJfrEsAZdssOrHmlbQa1L4SGwnwQiMJYusmlLU9t_4yYy0lkPhUG63bUZ4C6EA=s250",
+        "applyMatte": false,
+        "activateBy": ""
+    },
+    {
+        "id": "eip155:8453/0x00fC605Bc0654b91328f62a12F80A65e38D9aBAc/5",
+        "title": "Metamorphosis I #44",
+        "artist": "Damien Brito",
+        "url": "https://57vyd3qvvkabrasmr4qxrldbsat3afvyyzn5ih45dfmftdj2fnna.arweave.net/7-uB7hWqgBiCTI8heKxhkCewFrjGW9QfnRlYWY06K1o/",
+        "thumbnailUrl": "https://lh3.googleusercontent.com/g3ry0Umn3G6Kn9WunNAAVBXl79bYvrIeH8OXm96tsX6Zzcp3evUMeukUtlknDmkmS2WJIDqLnPZr5DjFves1enRlT-Mm8-bhTTQ=s250",
+        "applyMatte": false,
+        "activateBy": ""
+    }
+    ]
+}
