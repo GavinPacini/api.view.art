@@ -1,8 +1,8 @@
 {
-    "id": 3,
-    "image": "/logohighlight192.png",
-    "title": "Highlight",
-    "artists": "Leander Herzon, Andreas Gysin, Emily Xie, mchx, Aleksandra Jovani, and more",
+    "played": {
+        "item": 0,
+        "at": "2024-07-18T00:23:44.076Z"
+    },
     "items": [
     {
         "id": "eip155:8453/0xC9D128f88a8d97342a37680F0CE0F34598F289D0/3020",
