@@ -12,7 +12,6 @@ use {
     bb8_redis::{redis::AsyncCommands, RedisConnectionManager},
     changes::Changes,
     ethers::providers::{Http, Middleware, Provider},
-    model::PlaylistData,
     routes::auth::Keys,
     std::net::{Ipv4Addr, SocketAddr},
     tower_http::{cors::CorsLayer, trace::TraceLayer},
@@ -20,6 +19,7 @@ use {
 };
 
 mod args;
+mod caip;
 mod changes;
 mod model;
 mod routes;
@@ -93,8 +93,8 @@ fn app(state: AppState) -> Router {
         .route("/v1/nonce", post(routes::auth::get_nonce))
         .route("/v1/auth", post(routes::auth::verify_auth))
         .route(
-            "/v1/playlist/:channel",
-            get(routes::playlist::get_playlist).post(routes::playlist::set_playlist),
+            "/v1/channel/:channel",
+            get(routes::channel::get_channel).post(routes::channel::set_channel),
         )
         .layer(TraceLayer::new_for_http())
         .layer(Extension(keys))
@@ -114,10 +114,14 @@ fn app(state: AppState) -> Router {
 mod tests {
     use {
         super::*,
+        caip::asset_id::AssetId,
+        chrono::Utc,
         eventsource_stream::Eventsource,
         futures::StreamExt,
+        model::{ChannelContent, EmptyChannelContent, Item, Played},
         routes::auth::tests::get_team_api_key,
         tokio::net::TcpListener,
+        url::Url,
     };
 
     const REDIS_URL: &str = "redis://localhost:6379";
@@ -171,7 +175,7 @@ mod tests {
         let listening_url = spawn_app("127.0.0.1").await;
 
         let mut event_stream = reqwest::Client::new()
-            .get(&format!("{}/v1/playlist/test", listening_url))
+            .get(&format!("{}/v1/channel/test", listening_url))
             .header("User-Agent", "integration_test")
             .send()
             .await
@@ -186,65 +190,99 @@ mod tests {
         while let Some(event) = event_stream.next().await {
             match event {
                 Ok(event) => {
-                    assert!(event.event == "playlist");
+                    assert!(event.event == "content");
 
                     match i {
                         0 => {
-                            let playlist =
-                                serde_json::from_str::<PlaylistData>(&event.data).unwrap();
-                            assert!(playlist.playlist == 0);
-                            assert!(playlist.offset == 0);
+                            let content =
+                                serde_json::from_str::<EmptyChannelContent>(&event.data).unwrap();
+                            assert!(content.empty);
 
-                            // setting the playlist without the team API key should fail
+                            // setting the channel without the team API key should fail
                             let result = reqwest::Client::new()
-                                .post(&format!("{}/v1/playlist/test", listening_url))
+                                .post(&format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
-                                .json(&PlaylistData {
-                                    playlist: 1,
-                                    offset: 0,
+                                .json(&ChannelContent {
+                                    items: vec![Item {
+                                        id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
+                                        title: "test".to_string(),
+                                        artist: "test".to_string(),
+                                        url: Url::parse("https://test.com").unwrap(),
+                                        thumbnail_url: Url::parse("https://test.com").unwrap(),
+                                        apply_matte: false,
+                                        activate_by: "".to_string(),
+                                    }],
+                                    played: Played {
+                                        item: 0,
+                                        at: Utc::now(),
+                                    },
                                 })
                                 .send()
                                 .await
                                 .unwrap();
                             assert!(result.status().is_client_error());
 
-                            // set playlist to 1 using the team API key
+                            // set channel to 1 using the team API key
                             reqwest::Client::new()
-                                .post(&format!("{}/v1/playlist/test", listening_url))
+                                .post(&format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
-                                .json(&PlaylistData {
-                                    playlist: 1,
-                                    offset: 0,
+                                .json(&ChannelContent {
+                                    items: vec![Item {
+                                        id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
+                                        title: "test".to_string(),
+                                        artist: "test".to_string(),
+                                        url: Url::parse("https://test.com").unwrap(),
+                                        thumbnail_url: Url::parse("https://test.com").unwrap(),
+                                        apply_matte: false,
+                                        activate_by: "".to_string(),
+                                    }],
+                                    played: Played {
+                                        item: 0,
+                                        at: Utc::now(),
+                                    },
                                 })
                                 .send()
                                 .await
                                 .unwrap();
                         }
                         1 => {
-                            let playlist =
-                                serde_json::from_str::<PlaylistData>(&event.data).unwrap();
-                            assert!(playlist.playlist == 1);
-                            assert!(playlist.offset == 0);
+                            let content =
+                                serde_json::from_str::<ChannelContent>(&event.data).unwrap();
+                            assert!(content.items.len() == 1);
+                            assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
+                            assert!(content.played.item == 0);
 
-                            // set offset to 1
+                            // set played item to 1
                             reqwest::Client::new()
-                                .post(&format!("{}/v1/playlist/test", listening_url))
+                                .post(&format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
-                                .json(&PlaylistData {
-                                    playlist: 1,
-                                    offset: 1,
+                                .json(&ChannelContent {
+                                    items: vec![Item {
+                                        id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
+                                        title: "test".to_string(),
+                                        artist: "test".to_string(),
+                                        url: Url::parse("https://test.com").unwrap(),
+                                        thumbnail_url: Url::parse("https://test.com").unwrap(),
+                                        apply_matte: false,
+                                        activate_by: "".to_string(),
+                                    }],
+                                    played: Played {
+                                        item: 1,
+                                        at: Utc::now(),
+                                    },
                                 })
                                 .send()
                                 .await
                                 .unwrap();
                         }
                         2 => {
-                            let playlist =
-                                serde_json::from_str::<PlaylistData>(&event.data).unwrap();
-                            assert!(playlist.playlist == 1);
-                            assert!(playlist.offset == 1);
+                            let content =
+                                serde_json::from_str::<ChannelContent>(&event.data).unwrap();
+                            assert!(content.items.len() == 1);
+                            assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
+                            assert!(content.played.item == 1);
                         }
                         _ => {
                             panic!("Unexpected event");
@@ -264,6 +302,6 @@ mod tests {
         // TODO: create a wallet
         // TODO: get nonce
         // TODO: generate and sign SIWE message
-        // TODO: test we can set the channel playlist correctly
+        // TODO: test we can set the channel channel correctly
     }
 }
