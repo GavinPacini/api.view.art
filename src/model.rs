@@ -1,4 +1,5 @@
 use {
+    crate::caip::asset_id::AssetId,
     bb8_redis::redis::{FromRedisValue, RedisError, RedisResult, Value},
     chrono::{DateTime, Utc},
     ethers::types::Address,
@@ -23,7 +24,7 @@ pub struct VerifyAuth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
-    pub id: String,
+    pub id: AssetId,
     pub title: String,
     pub artist: String,
     pub url: Url,
@@ -40,10 +41,6 @@ pub struct Played {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelContent {
-    // TODO: Should migrate to CDN for images, for now just a blob
-    pub image: String,
-    pub title: String,
-    pub artists: String,
     pub items: Vec<Item>,
     pub played: Played,
 }
@@ -62,7 +59,13 @@ impl Default for EmptyChannelContent {
 impl FromRedisValue for ChannelContent {
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         let s = match v {
-            Value::Data(data) => std::str::from_utf8(data).unwrap(),
+            Value::Data(data) => std::str::from_utf8(data).map_err(|err| {
+                RedisError::from((
+                    bb8_redis::redis::ErrorKind::TypeError,
+                    "Error parsing string from utf8",
+                    err.to_string(),
+                ))
+            })?,
             _ => {
                 return Err(RedisError::from((
                     bb8_redis::redis::ErrorKind::TypeError,

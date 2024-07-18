@@ -152,14 +152,6 @@ pub async fn set_channel(
 }
 
 fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
-    if channel_content.title.len() < 2 || channel_content.title.len() > 100 {
-        return Err(anyhow!("title must be between 2 and 100 characters"));
-    }
-
-    if channel_content.artists.len() < 2 || channel_content.artists.len() > 100 {
-        return Err(anyhow!("artists must be between 2 and 100 characters"));
-    }
-
     // ensure all ids are unique in items
     let mut ids = HashSet::new();
     for item in &channel_content.items {

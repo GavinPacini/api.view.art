@@ -19,6 +19,7 @@ use {
 };
 
 mod args;
+mod caip;
 mod changes;
 mod model;
 mod routes;
@@ -113,6 +114,7 @@ fn app(state: AppState) -> Router {
 mod tests {
     use {
         super::*,
+        caip::asset_id::AssetId,
         chrono::Utc,
         eventsource_stream::Eventsource,
         futures::StreamExt,
@@ -201,11 +203,8 @@ mod tests {
                                 .post(&format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .json(&ChannelContent {
-                                    title: "test".to_string(),
-                                    artists: "test".to_string(),
-                                    image: "blob".to_string(),
                                     items: vec![Item {
-                                        id: "test".to_string(),
+                                        id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
                                         artist: "test".to_string(),
                                         url: Url::parse("https://test.com").unwrap(),
@@ -229,11 +228,8 @@ mod tests {
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&ChannelContent {
-                                    title: "test".to_string(),
-                                    artists: "test".to_string(),
-                                    image: "blob".to_string(),
                                     items: vec![Item {
-                                        id: "test".to_string(),
+                                        id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
                                         artist: "test".to_string(),
                                         url: Url::parse("https://test.com").unwrap(),
@@ -253,9 +249,8 @@ mod tests {
                         1 => {
                             let content =
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
-                            assert!(content.title == "test");
                             assert!(content.items.len() == 1);
-                            assert!(content.items[0].id == "test");
+                            assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
                             assert!(content.played.item == 0);
 
                             // set played item to 1
@@ -264,11 +259,8 @@ mod tests {
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&ChannelContent {
-                                    title: "test".to_string(),
-                                    artists: "test".to_string(),
-                                    image: "blob".to_string(),
                                     items: vec![Item {
-                                        id: "test".to_string(),
+                                        id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
                                         artist: "test".to_string(),
                                         url: Url::parse("https://test.com").unwrap(),
@@ -288,9 +280,8 @@ mod tests {
                         2 => {
                             let content =
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
-                            assert!(content.title == "test");
                             assert!(content.items.len() == 1);
-                            assert!(content.items[0].id == "test");
+                            assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
                             assert!(content.played.item == 1);
                         }
                         _ => {
