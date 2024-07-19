@@ -206,7 +206,7 @@ mod tests {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
-                                        artist: "test".to_string(),
+                                        artist: Some("test".to_string()),
                                         url: Url::parse("https://test.com").unwrap(),
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
@@ -231,7 +231,7 @@ mod tests {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
-                                        artist: "test".to_string(),
+                                        artist: Some("test".to_string()),
                                         url: Url::parse("https://test.com").unwrap(),
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
@@ -262,7 +262,7 @@ mod tests {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
-                                        artist: "test".to_string(),
+                                        artist: Some("test".to_string()),
                                         url: Url::parse("https://test.com").unwrap(),
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
