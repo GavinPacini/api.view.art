@@ -26,7 +26,7 @@ pub struct VerifyAuth {
 pub struct Item {
     pub id: AssetId,
     pub title: String,
-    pub artist: String,
+    pub artist: Option<String>,
     pub url: Url,
     pub thumbnail_url: Url,
     pub apply_matte: bool,

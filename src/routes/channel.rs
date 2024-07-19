@@ -162,18 +162,20 @@ fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
     }
 
     for item in &channel_content.items {
-        if item.title.len() < 2 || item.title.len() > 100 {
+        if item.title.is_empty() || item.title.len() > 100 {
             return Err(anyhow!(
-                "item title must be between 2 and 100 characters, for id {}",
+                "item title must be between 1 and 100 characters, for id {}",
                 item.id
             ));
         }
 
-        if item.artist.len() < 2 || item.artist.len() > 100 {
-            return Err(anyhow!(
-                "item artist must be between 2 and 100 characters, for id {}",
-                item.id
-            ));
+        if let Some(artist) = &item.artist {
+            if artist.is_empty() || artist.len() > 100 {
+                return Err(anyhow!(
+                    "item artist must be omitted or between 1 and 100 characters, for id {}",
+                    item.id
+                ));
+            }
         }
     }
 
