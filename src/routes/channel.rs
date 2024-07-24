@@ -1,7 +1,7 @@
 use {
     super::auth::Claims,
     crate::{
-        model::{ChannelContent, EmptyChannelContent},
+        model::{ChannelContent, CreateChannel, EmptyChannelContent},
         routes::internal_error,
         utils::url_factory::generate_url_from_address,
         AppState,
@@ -94,6 +94,23 @@ pub async fn get_channel(
             .interval(Duration::from_secs(1))
             .text("keep-alive-text"),
     )
+}
+
+pub async fn create_channel(
+    claims: Claims,
+    state: State<AppState>,
+    Json(CreateChannel { channel }): Json<CreateChannel>,
+) -> impl IntoResponse {
+    tracing::info!(
+        "create channel for {}, owned by {:?}",
+        channel,
+        claims.address
+    );
+
+    // TODO: Check if channel is valid
+    // TODO: Check if channel already exists
+    // TODO: Add channel to users list of channels in redis
+    (StatusCode::OK, json!({ "status": true }).to_string())
 }
 
 pub async fn set_channel(
