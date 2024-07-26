@@ -94,7 +94,6 @@ fn app(state: AppState) -> Router {
         Router::new()
             .route("/nonce", post(routes::auth::get_nonce))
             .route("/auth", post(routes::auth::verify_auth))
-            .route("/channel", post(routes::channel::create_channel))
             .route(
                 "/channel/:channel",
                 get(routes::channel::get_channel).post(routes::channel::set_channel),
