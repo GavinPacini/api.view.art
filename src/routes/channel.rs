@@ -118,7 +118,7 @@ pub async fn set_channel(
         );
     }
 
-    // check if channel is owned by the user or the user is an admin
+    // check if the user is an admin or the channel is owned by the user
     let address_key = format!("{}:{}", ADDRESS_KEY, claims.address);
     let owned: bool = if claims.address.is_zero() {
         // TODO: currently admin can set any channel, investigate if we want this or not

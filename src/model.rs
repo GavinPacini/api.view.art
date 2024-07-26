@@ -22,11 +22,6 @@ pub struct VerifyAuth {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateChannel {
-    pub channel: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
     pub id: AssetId,
