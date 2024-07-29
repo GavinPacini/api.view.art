@@ -29,6 +29,8 @@ pub async fn get_channel(
     state: State<AppState>,
     Path(channel): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let channel = channel.to_ascii_lowercase();
+
     tracing::info!("get content for channel {}", channel);
 
     let key = format!("{}:{}", CHANNEL_KEY, channel);
@@ -110,7 +112,7 @@ pub async fn set_channel(
         claims.address
     );
 
-    if !channel.chars().all(|c| c.is_ascii_alphabetic()) {
+    if !channel.chars().all(|c| c.is_ascii_alphabetic() || c == '-') {
         return (
             StatusCode::BAD_REQUEST,
             json!({ "status": false, "error": "invalid channel name, must be ascii alphabetic" })
