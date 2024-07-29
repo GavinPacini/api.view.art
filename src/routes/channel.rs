@@ -3,7 +3,6 @@ use {
     crate::{
         model::{ChannelContent, EmptyChannelContent},
         routes::internal_error,
-        utils::url_factory::generate_url_from_address,
         AppState,
     },
     anyhow::{anyhow, Result},
@@ -23,6 +22,7 @@ use {
     tokio_stream::wrappers::BroadcastStream,
 };
 
+pub const ADDRESS_KEY: &str = "address";
 pub const CHANNEL_KEY: &str = "channel";
 
 pub async fn get_channel(
@@ -102,11 +102,69 @@ pub async fn set_channel(
     Path(channel): Path<String>,
     Json(channel_content): Json<ChannelContent>,
 ) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+
     tracing::info!(
         "set channel content for {}, owned by {:?}",
         channel,
         claims.address
     );
+
+    if !channel.chars().all(|c| c.is_ascii_alphabetic()) {
+        return (
+            StatusCode::BAD_REQUEST,
+            json!({ "status": false, "error": "invalid channel name, must be ascii alphabetic" })
+                .to_string(),
+        );
+    }
+
+    // check if the user is an admin or the channel is owned by the user
+    let address_key = format!("{}:{}", ADDRESS_KEY, claims.address);
+    let owned: bool = if claims.address.is_zero() {
+        // TODO: currently admin can set any channel, investigate if we want this or not
+        // if admin, always set owned to true
+        true
+    } else {
+        match state.pool.get().await {
+            Ok(mut conn) => match conn
+                .sismember::<&str, &str, bool>(&address_key, &channel)
+                .await
+            {
+                Ok(owned) => owned,
+                Err(err) => {
+                    tracing::error!("Error checking if channel is owned: {:?}", err);
+                    return internal_error(anyhow!(err));
+                }
+            },
+            Err(err) => {
+                tracing::error!("Error getting connection from pool: {:?}", err);
+                return internal_error(anyhow!(err));
+            }
+        }
+    };
+
+    // check if channel already exists
+    let channel_key = format!("{}:{}", CHANNEL_KEY, channel);
+    let exists: bool = match state.pool.get().await {
+        Ok(mut conn) => match conn.exists::<&str, bool>(&channel_key).await {
+            Ok(exists) => exists,
+            Err(err) => {
+                tracing::error!("Error checking if channel exists: {:?}", err);
+                return internal_error(anyhow!(err));
+            }
+        },
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    };
+
+    if exists && !owned {
+        return (
+            StatusCode::BAD_REQUEST,
+            json!({ "status": false, "error": "channel already exists" }).to_string(),
+        );
+    }
 
     if let Err(err) = validate_channel_content(&channel_content) {
         tracing::debug!("Error validating channel content: {:?}", err);
@@ -116,31 +174,31 @@ pub async fn set_channel(
         );
     }
 
-    // Currently admin can set any channel
-    // TODO: Investigate if we want this or not
-    if !claims.address.is_zero() {
-        let channel_url = generate_url_from_address(claims.address);
-        if channel != channel_url {
-            return (
-                StatusCode::BAD_REQUEST,
-                json!({ "status": false, "error": "invalid channel" }).to_string(),
-            );
-        }
-    }
-
-    let key = format!("{}:{}", CHANNEL_KEY, channel);
-
     match state.pool.get().await {
-        Ok(mut conn) => match conn
-            .set::<&str, String, ()>(&key, serde_json::to_string(&channel_content).unwrap())
-            .await
-        {
-            Ok(_) => {
-                state.changes.broadcast(&channel, channel_content).await;
-                (StatusCode::OK, json!({ "status": true }).to_string())
-            }
+        Ok(mut conn) => match conn.sadd::<&str, &str, ()>(&address_key, &channel).await {
+            Ok(_) => match conn
+                .set::<&str, String, ()>(
+                    &channel_key,
+                    serde_json::to_string(&channel_content).unwrap(),
+                )
+                .await
+            {
+                Ok(_) => {
+                    state.changes.broadcast(&channel, channel_content).await;
+                    (StatusCode::OK, json!({ "status": true }).to_string())
+                }
+                Err(err) => {
+                    tracing::error!("Error setting content for channel {}: {:?}", channel, err);
+                    internal_error(anyhow!(err))
+                }
+            },
             Err(err) => {
-                tracing::error!("Error setting content for channel {}: {:?}", channel, err);
+                tracing::error!(
+                    "Error adding channel {} to owner set {}: {:?}",
+                    channel,
+                    claims.address,
+                    err
+                );
                 internal_error(anyhow!(err))
             }
         },

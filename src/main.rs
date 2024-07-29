@@ -89,25 +89,28 @@ async fn main() -> Result<()> {
 fn app(state: AppState) -> Router {
     let keys = state.keys.clone();
     // build our application with a route
-    Router::new()
-        .route("/v1/nonce", post(routes::auth::get_nonce))
-        .route("/v1/auth", post(routes::auth::verify_auth))
-        .route(
-            "/v1/channel/:channel",
-            get(routes::channel::get_channel).post(routes::channel::set_channel),
-        )
-        .layer(TraceLayer::new_for_http())
-        .layer(Extension(keys))
-        .layer(
-            CorsLayer::new()
-                .allow_origin([
-                    "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-                    "https://view.art".parse::<HeaderValue>().unwrap(),
-                ])
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
-        )
-        .with_state(state)
+    Router::new().nest(
+        "/v1",
+        Router::new()
+            .route("/nonce", post(routes::auth::get_nonce))
+            .route("/auth", post(routes::auth::verify_auth))
+            .route(
+                "/channel/:channel",
+                get(routes::channel::get_channel).post(routes::channel::set_channel),
+            )
+            .layer(TraceLayer::new_for_http())
+            .layer(Extension(keys))
+            .layer(
+                CorsLayer::new()
+                    .allow_origin([
+                        "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+                        "https://view.art".parse::<HeaderValue>().unwrap(),
+                    ])
+                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                    .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
+            )
+            .with_state(state),
+    )
 }
 
 #[cfg(test)]
