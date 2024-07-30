@@ -98,6 +98,11 @@ fn app(state: AppState) -> Router {
                 "/channel/:channel",
                 get(routes::channel::get_channel).post(routes::channel::set_channel),
             )
+            .route("/channel/:channel/taken", get(routes::channel::is_taken))
+            .route(
+                "/wallet/:address/channels",
+                get(routes::wallet::get_channels),
+            )
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
             .layer(
@@ -123,6 +128,7 @@ mod tests {
         futures::StreamExt,
         model::{ChannelContent, EmptyChannelContent, Item, Played},
         routes::auth::tests::get_team_api_key,
+        serde_json::Value,
         tokio::net::TcpListener,
         url::Url,
     };
@@ -201,6 +207,19 @@ mod tests {
                                 serde_json::from_str::<EmptyChannelContent>(&event.data).unwrap();
                             assert!(content.empty);
 
+                            // check if channel is taken
+                            let result = reqwest::Client::new()
+                                .get(&format!("{}/v1/channel/test/taken", listening_url))
+                                .header("User-Agent", "integration_test")
+                                .send()
+                                .await
+                                .unwrap();
+                            assert!(result.status().is_success());
+                            let content =
+                                serde_json::from_str::<Value>(&result.text().await.unwrap())
+                                    .unwrap();
+                            assert!(!content["taken"].as_bool().unwrap());
+
                             // setting the channel without the team API key should fail
                             let result = reqwest::Client::new()
                                 .post(&format!("{}/v1/channel/test", listening_url))
@@ -255,6 +274,38 @@ mod tests {
                             assert!(content.items.len() == 1);
                             assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
                             assert!(content.played.item == 0);
+
+                            // check if channel is taken
+                            let result = reqwest::Client::new()
+                                .get(&format!("{}/v1/channel/test/taken", listening_url))
+                                .header("User-Agent", "integration_test")
+                                .send()
+                                .await
+                                .unwrap();
+                            assert!(result.status().is_success());
+                            let content =
+                                serde_json::from_str::<Value>(&result.text().await.unwrap())
+                                    .unwrap();
+                            assert!(content["taken"].as_bool().unwrap());
+
+                            // check if channel is in list of channels for address
+                            let result = reqwest::Client::new()
+                                .get(&format!(
+                                    "{}/v1/wallet/{:#?}/channels",
+                                    listening_url,
+                                    ethers::types::Address::zero()
+                                ))
+                                .header("User-Agent", "integration_test")
+                                .send()
+                                .await
+                                .unwrap();
+
+                            assert!(result.status().is_success());
+                            let content =
+                                serde_json::from_str::<Value>(&result.text().await.unwrap())
+                                    .unwrap();
+                            assert!(content["channels"].as_array().unwrap().len() == 1);
+                            assert!(content["channels"][0].as_str().unwrap() == "test");
 
                             // set played item to 1
                             reqwest::Client::new()

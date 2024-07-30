@@ -1,7 +1,7 @@
 use {
     super::auth::Claims,
     crate::{
-        model::{ChannelContent, EmptyChannelContent},
+        model::{ChannelContent, EmptyChannelContent, ADDRESS_KEY, CHANNEL_KEY},
         routes::internal_error,
         AppState,
     },
@@ -21,9 +21,6 @@ use {
     std::{collections::HashSet, convert::Infallible, time::Duration},
     tokio_stream::wrappers::BroadcastStream,
 };
-
-pub const ADDRESS_KEY: &str = "address";
-pub const CHANNEL_KEY: &str = "channel";
 
 pub async fn get_channel(
     state: State<AppState>,
@@ -96,6 +93,30 @@ pub async fn get_channel(
             .interval(Duration::from_secs(1))
             .text("keep-alive-text"),
     )
+}
+
+pub async fn is_taken(state: State<AppState>, Path(channel): Path<String>) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+
+    tracing::info!("check if channel {} is taken", channel);
+
+    let key = format!("{}:{}", CHANNEL_KEY, channel);
+
+    let exists: bool = match state.pool.get().await {
+        Ok(mut conn) => match conn.exists::<&str, bool>(&key).await {
+            Ok(exists) => exists,
+            Err(err) => {
+                tracing::error!("Error checking if channel exists: {:?}", err);
+                return internal_error(anyhow!(err));
+            }
+        },
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    };
+
+    (StatusCode::OK, json!({ "taken": exists }).to_string())
 }
 
 pub async fn set_channel(
