@@ -8,6 +8,9 @@ use {
     url::Url,
 };
 
+pub const ADDRESS_KEY: &str = "address";
+pub const CHANNEL_KEY: &str = "channel";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetAuth {
