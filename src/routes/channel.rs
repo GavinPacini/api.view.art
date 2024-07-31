@@ -300,6 +300,8 @@ async fn owns_channel(
     channel: String,
     pool: &Pool<RedisConnectionManager>,
 ) -> bool {
+    // TODO: admin is currently denoted by an empty address, we should use a
+    // dedicated magic address instead
     if address.is_zero() {
         // TODO: currently admin can set any channel, investigate if we want this or not
         // if admin, always set owned to true
