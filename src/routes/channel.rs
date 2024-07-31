@@ -15,7 +15,9 @@ use {
         },
         Json,
     },
-    bb8_redis::redis::AsyncCommands,
+    bb8::Pool,
+    bb8_redis::{redis::AsyncCommands, RedisConnectionManager},
+    ethers::types::Address,
     futures::{stream::Stream, StreamExt},
     serde_json::json,
     std::{collections::HashSet, convert::Infallible, time::Duration},
@@ -141,30 +143,7 @@ pub async fn set_channel(
         );
     }
 
-    // check if the user is an admin or the channel is owned by the user
-    let address_key = format!("{}:{}", ADDRESS_KEY, claims.address);
-    let owned: bool = if claims.address.is_zero() {
-        // TODO: currently admin can set any channel, investigate if we want this or not
-        // if admin, always set owned to true
-        true
-    } else {
-        match state.pool.get().await {
-            Ok(mut conn) => match conn
-                .sismember::<&str, &str, bool>(&address_key, &channel)
-                .await
-            {
-                Ok(owned) => owned,
-                Err(err) => {
-                    tracing::error!("Error checking if channel is owned: {:?}", err);
-                    return internal_error(anyhow!(err));
-                }
-            },
-            Err(err) => {
-                tracing::error!("Error getting connection from pool: {:?}", err);
-                return internal_error(anyhow!(err));
-            }
-        }
-    };
+    let owned = owns_channel(claims.address, channel.clone(), &state.pool).await;
 
     // check if channel already exists
     let channel_key = format!("{}:{}", CHANNEL_KEY, channel);
@@ -196,6 +175,8 @@ pub async fn set_channel(
             json!({ "status": false, "error": err.to_string() }).to_string(),
         );
     }
+
+    let address_key = format!("{}:{}", ADDRESS_KEY, claims.address);
 
     match state.pool.get().await {
         Ok(mut conn) => match conn.sadd::<&str, &str, ()>(&address_key, &channel).await {
@@ -261,4 +242,83 @@ fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub async fn delete_channel(
+    claims: Claims,
+    state: State<AppState>,
+    Path(channel): Path<String>,
+) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+
+    tracing::info!(
+        "delete content for channel {}, owned by {:?}",
+        channel,
+        claims.address
+    );
+
+    let owned = owns_channel(claims.address, channel.clone(), &state.pool).await;
+
+    if !owned {
+        return (
+            StatusCode::BAD_REQUEST,
+            json!({ "status": false, "error": "channel not owned by user" }).to_string(),
+        );
+    }
+
+    let channel_key = format!("{}:{}", CHANNEL_KEY, channel);
+    let address_key = format!("{}:{}", ADDRESS_KEY, claims.address);
+
+    match state.pool.get().await {
+        Ok(mut conn) => match conn.del::<&str, bool>(&channel_key).await {
+            Ok(_) => match conn.srem::<&str, &str, ()>(&address_key, &channel).await {
+                Ok(_) => (StatusCode::OK, json!({ "status": true }).to_string()),
+                Err(err) => {
+                    tracing::error!(
+                        "Error removing channel {} from owner set {}: {:?}",
+                        channel,
+                        claims.address,
+                        err
+                    );
+                    internal_error(anyhow!(err))
+                }
+            },
+            Err(err) => {
+                tracing::error!("Error deleting channel {}: {:?}", channel, err);
+                internal_error(anyhow!(err))
+            }
+        },
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            internal_error(anyhow!(err))
+        }
+    }
+}
+
+async fn owns_channel(
+    address: Address,
+    channel: String,
+    pool: &Pool<RedisConnectionManager>,
+) -> bool {
+    if address.is_zero() {
+        // TODO: currently admin can set any channel, investigate if we want this or not
+        // if admin, always set owned to true
+        return true;
+    }
+
+    let key = format!("{}:{}", ADDRESS_KEY, address);
+
+    match pool.get().await {
+        Ok(mut conn) => match conn.sismember::<&str, &str, bool>(&key, &channel).await {
+            Ok(owned) => owned,
+            Err(err) => {
+                tracing::error!("Error checking if channel is owned: {:?}", err);
+                false
+            }
+        },
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            false
+        }
+    }
 }
