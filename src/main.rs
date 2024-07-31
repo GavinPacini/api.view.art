@@ -96,7 +96,9 @@ fn app(state: AppState) -> Router {
             .route("/auth", post(routes::auth::verify_auth))
             .route(
                 "/channel/:channel",
-                get(routes::channel::get_channel).post(routes::channel::set_channel),
+                get(routes::channel::get_channel)
+                    .post(routes::channel::set_channel)
+                    .delete(routes::channel::delete_channel),
             )
             .route("/channel/:channel/taken", get(routes::channel::is_taken))
             .route(
