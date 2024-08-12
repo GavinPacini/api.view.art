@@ -158,7 +158,7 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
         }
         None => (
             StatusCode::NOT_FOUND, 
-            json!({ "status": false, "error": "channel not found" }).to_string()
+            json!({ "status": false, "error": "channel not found" }).to_string(),
         ),
     }
 }

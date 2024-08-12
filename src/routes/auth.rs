@@ -10,9 +10,7 @@ use {
         extract::{FromRequestParts, State},
         http::{request::Parts, StatusCode},
         response::{IntoResponse, Response},
-        Extension,
-        Json,
-        RequestPartsExt,
+        Extension, Json, RequestPartsExt,
     },
     axum_extra::{
         headers::{authorization::Bearer, Authorization},
