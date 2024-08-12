@@ -100,6 +100,10 @@ fn app(state: AppState) -> Router {
             )
             .route("/channel/:channel/taken", get(routes::channel::is_taken))
             .route(
+                "/channel/:channel/summary",
+                get(routes::channel::get_summary),
+            )
+            .route(
                 "/wallet/:address/channels",
                 get(routes::wallet::get_channels),
             )

@@ -119,6 +119,50 @@ pub async fn is_taken(state: State<AppState>, Path(channel): Path<String>) -> im
     (StatusCode::OK, json!({ "taken": exists }).to_string())
 }
 
+pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+
+    tracing::info!("get summary for channel {}", channel);
+
+    let key = format!("{}:{}", CHANNEL_KEY, channel);
+
+    let initial_content: Option<ChannelContent> = {
+        match state.pool.get().await {
+            Ok(mut conn) => match conn.get(&key).await {
+                Ok(content) => Some(content),
+                Err(err) => {
+                    tracing::error!("Error getting content for channel {}: {:?}", channel, err);
+                    None
+                }
+            },
+            Err(err) => {
+                tracing::error!("Error getting connection from pool: {:?}", err);
+                None
+            }
+        }
+    };
+
+    match initial_content {
+        Some(content) => {
+            // make summary a default json object
+            let mut summary = json!({});
+
+            // add items to summary
+            summary["items"] = json!(content.items.len());
+
+            // add thumbnail to summary
+            if let Some(thumbnail) = content.items.first().map(|item| item.thumbnail_url.clone()) {
+                summary["thumbnail"] = json!(thumbnail);
+            }
+            (StatusCode::OK, json!(summary).to_string())
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            json!({ "status": false, "error": "channel not found" }).to_string(),
+        ),
+    }
+}
+
 pub async fn set_channel(
     claims: Claims,
     state: State<AppState>,
