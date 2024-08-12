@@ -119,6 +119,43 @@ pub async fn is_taken(state: State<AppState>, Path(channel): Path<String>) -> im
     (StatusCode::OK, json!({ "taken": exists }).to_string())
 }
 
+// create an endpoint that will give a "summary" of a channel. this includes the number of items, the thumbnail url for the first item, the creator wallet address
+pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+
+    tracing::info!("get summary for channel {}", channel);
+
+    let key = format!("{}:{}", CHANNEL_KEY, channel);
+
+    // get content from DB if set
+    let initial_content: Option<ChannelContent> = {
+        match state.pool.get().await {
+            Ok(mut conn) => match conn.get(&key).await {
+                Ok(content) => Some(content),
+                Err(err) => {
+                    tracing::error!("Error getting content for channel {}: {:?}", channel, err);
+                    None
+                }
+            },
+            Err(err) => {
+                tracing::error!("Error getting connection from pool: {:?}", err);
+                None
+            }
+        }
+    };
+
+    match initial_content {
+        Some(content) => {
+            let mut summary = ChannelSummary::default();
+            summary.items = content.items.len();
+            summary.thumbnail = content.items.first().map(|item| item.thumbnail.clone());
+            summary.creator = content.items.first().map(|item| item.creator.clone());
+            (StatusCode::OK, json!(summary).to_string())
+        }
+        None => (StatusCode::NOT_FOUND, json!({ "status": false, "error": "channel not found" }).to_string()),
+    }
+}
+
 pub async fn set_channel(
     claims: Claims,
     state: State<AppState>,
