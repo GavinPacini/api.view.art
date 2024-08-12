@@ -151,7 +151,7 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
             summary["items"] = json!(content.items.len());
 
             // add thumbnail to summary
-            if let Some(thumbnail) = content.items.first().map(|item| item.thumbnail.clone()) {
+            if let Some(thumbnail) = content.items.first().map(|item| item.thumbnail_url.clone()) {
                 summary["thumbnail"] = json!(thumbnail);
             }
             (StatusCode::OK, json!(summary).to_string())
