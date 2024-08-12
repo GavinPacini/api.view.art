@@ -126,7 +126,6 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     let key = format!("{}:{}", CHANNEL_KEY, channel);
 
-    // get content from DB if set
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
             Ok(mut conn) => match conn.get(&key).await {
@@ -145,10 +144,16 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     match initial_content {
         Some(content) => {
-            let mut summary = ChannelSummary::default();
-            summary.items = content.items.len();
-            summary.thumbnail = content.items.first().map(|item| item.thumbnail.clone());
-            summary.creator = content.items.first().map(|item| item.creator.clone());
+            // make summary a default json object
+            let mut summary = json!({});
+
+            // add items to summary
+            summary["items"] = json!(content.items.len());
+
+            // add thumbnail to summary
+            if let Some(thumbnail) = content.items.first().map(|item| item.thumbnail.clone()) {
+                summary["thumbnail"] = json!(thumbnail);
+            }
             (StatusCode::OK, json!(summary).to_string())
         }
         None => (StatusCode::NOT_FOUND, json!({ "status": false, "error": "channel not found" }).to_string()),
