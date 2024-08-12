@@ -99,6 +99,7 @@ fn app(state: AppState) -> Router {
                 get(routes::channel::get_channel).post(routes::channel::set_channel),
             )
             .route("/channel/:channel/taken", get(routes::channel::is_taken))
+            .route("/channel/:channel/summary", get(routes::channel::get_summary))
             .route(
                 "/wallet/:address/channels",
                 get(routes::wallet::get_channels),

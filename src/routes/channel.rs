@@ -119,7 +119,6 @@ pub async fn is_taken(state: State<AppState>, Path(channel): Path<String>) -> im
     (StatusCode::OK, json!({ "taken": exists }).to_string())
 }
 
-// create an endpoint that will give a "summary" of a channel. this includes the number of items, the thumbnail url for the first item, the creator wallet address
 pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) -> impl IntoResponse {
     let channel = channel.to_ascii_lowercase();
 
