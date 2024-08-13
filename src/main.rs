@@ -113,6 +113,8 @@ fn app(state: AppState) -> Router {
                 CorsLayer::new()
                     .allow_origin([
                         "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+                        "http://192.168.1.176:5173".parse::<HeaderValue>().unwrap(),
+                        "http://192.168.1.17:5173".parse::<HeaderValue>().unwrap(),
                         "https://view.art".parse::<HeaderValue>().unwrap(),
                     ])
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
