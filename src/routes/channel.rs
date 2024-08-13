@@ -177,7 +177,10 @@ pub async fn set_channel(
         claims.address
     );
 
-    if !channel.chars().all(|c| c.is_ascii_alphabetic() || c == '-') {
+    if !channel
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
         return (
             StatusCode::BAD_REQUEST,
             json!({ "status": false, "error": "invalid channel name, must be ascii alphabetic" })
