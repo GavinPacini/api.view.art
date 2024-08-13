@@ -14,7 +14,10 @@ use {
     ethers::providers::{Http, Middleware, Provider},
     routes::auth::Keys,
     std::net::{Ipv4Addr, SocketAddr},
-    tower_http::{cors::CorsLayer, trace::TraceLayer},
+    tower_http::{
+        cors::{Any, CorsLayer},
+        trace::TraceLayer,
+    },
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
@@ -66,12 +69,15 @@ async fn main() -> Result<()> {
     let changes = Changes::new();
 
     // build our application
-    let app = app(AppState {
-        pool,
-        changes,
-        provider,
-        keys,
-    });
+    let app = app(
+        AppState {
+            pool,
+            changes,
+            provider,
+            keys,
+        },
+        args.allow_all_origins,
+    );
 
     // run it
     let listener =
@@ -86,7 +92,22 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn app(state: AppState) -> Router {
+fn app(state: AppState, allow_all_origins: bool) -> Router {
+    let cors_layer = if allow_all_origins {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+            .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
+    } else {
+        CorsLayer::new()
+            .allow_origin([
+                "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+                "https://view.art".parse::<HeaderValue>().unwrap(),
+            ])
+            .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+            .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
+    };
+
     let keys = state.keys.clone();
     // build our application with a route
     Router::new().nest(
@@ -109,15 +130,7 @@ fn app(state: AppState) -> Router {
             )
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
-            .layer(
-                CorsLayer::new()
-                    .allow_origin([
-                        "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-                        "https://view.art".parse::<HeaderValue>().unwrap(),
-                    ])
-                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                    .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
-            )
+            .layer(cors_layer)
             .with_state(state),
     )
 }
@@ -169,12 +182,15 @@ mod tests {
         tokio::spawn(async {
             axum::serve(
                 listener,
-                app(AppState {
-                    pool,
-                    changes,
-                    provider,
-                    keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
-                }),
+                app(
+                    AppState {
+                        pool,
+                        changes,
+                        provider,
+                        keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
+                    },
+                    false,
+                ),
             )
             .await
             .unwrap();

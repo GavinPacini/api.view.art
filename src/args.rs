@@ -18,6 +18,10 @@ pub struct Args {
     /// Secret key for JWT
     #[arg(long, env)]
     pub jwt_secret: SecretString,
+
+    /// Allow all origins for CORS
+    #[arg(long, env, default_value = "false")]
+    pub allow_all_origins: bool,
 }
 
 impl Args {
