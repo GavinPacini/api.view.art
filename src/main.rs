@@ -113,7 +113,7 @@ fn app(state: AppState) -> Router {
                 CorsLayer::new()
                     .allow_origin([
                         "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-                        "http://192.168.1.176:5173".parse::<HeaderValue>().unwrap(),
+                        "https://macaw-resolved-arguably.ngrok-free.app/".parse::<HeaderValue>().unwrap(),
                         "http://192.168.1.17:5173".parse::<HeaderValue>().unwrap(),
                         "https://view.art".parse::<HeaderValue>().unwrap(),
                     ])
