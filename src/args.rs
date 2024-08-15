@@ -18,6 +18,9 @@ pub struct Args {
     /// Secret key for JWT
     #[arg(long, env)]
     pub jwt_secret: SecretString,
+
+    #[arg(long, env)]
+    pub stripe_secret_key: SecretString,
 }
 
 impl Args {

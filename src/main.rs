@@ -24,6 +24,7 @@ mod changes;
 mod model;
 mod routes;
 mod utils;
+mod stripe_crypto;
 
 #[derive(Clone)]
 struct AppState {
@@ -31,6 +32,7 @@ struct AppState {
     changes: Changes,
     provider: Provider<Http>,
     keys: Keys,
+    stripe_secret_key: String,
 }
 
 #[tokio::main]
@@ -64,6 +66,9 @@ async fn main() -> Result<()> {
     let keys = Keys::new(String::from(args.jwt_secret).as_bytes());
 
     let changes = Changes::new();
+
+    let stripe_crypto = StripeCrypto::new(args.stripe_secret_key.clone());
+
 
     // build our application
     let app = app(AppState {
@@ -107,6 +112,7 @@ fn app(state: AppState) -> Router {
                 "/wallet/:address/channels",
                 get(routes::wallet::get_channels),
             )
+            .route("/create-crypto-session", post(routes::stripe::create_crypto_session))
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
             .layer(
@@ -369,3 +375,4 @@ mod tests {
         // TODO: test we can set the channel channel correctly
     }
 }
+
