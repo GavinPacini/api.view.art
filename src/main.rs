@@ -3,10 +3,7 @@ use {
     anyhow::{Context, Result},
     axum::{
         self,
-        body::Body,
-        extract::State,
-        http::{header, HeaderValue, Method, Request, StatusCode},
-        response::Response,
+        http::{header, HeaderValue, Method},
         routing::{get, post},
         Extension,
         Router,

@@ -4,10 +4,10 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
 };
-use reqwest::Client;
+use crate::AppState;
 
 pub async fn proxy_handler(
-    State(client): State<Client>,
+    State(state): State<AppState>,
     req: Request<Body>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
     let path = req.uri().path().strip_prefix("/v1/proxy/").unwrap_or("");
@@ -15,7 +15,7 @@ pub async fn proxy_handler(
     
     let url = format!("https://{}{}", path, query);
 
-    let client_req = client
+    let client_req = state.client
         .request(req.method().clone(), &url)
         .headers(req.headers().clone())
         .body(req.into_body());
