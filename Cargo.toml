@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 # runtime, async, networking
-reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 axum = "0.7"
