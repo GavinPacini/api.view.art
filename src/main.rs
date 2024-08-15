@@ -31,7 +31,6 @@ struct AppState {
     changes: Changes,
     provider: Provider<Http>,
     keys: Keys,
-    client: reqwest::Client,
 }
 
 #[tokio::main]
@@ -66,15 +65,12 @@ async fn main() -> Result<()> {
 
     let changes = Changes::new();
 
-    let client = reqwest::Client::new();
-
     // build our application
     let app = app(AppState {
         pool,
         changes,
         provider,
         keys,
-        client,
     });
 
     // run it
@@ -177,8 +173,6 @@ mod tests {
 
         let changes = Changes::new();
 
-        let client = reqwest::Client::new();
-
         tokio::spawn(async {
             axum::serve(
                 listener,
@@ -187,7 +181,6 @@ mod tests {
                     changes,
                     provider,
                     keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
-                    client,
                 }),
             )
             .await

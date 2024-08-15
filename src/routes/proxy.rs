@@ -2,16 +2,17 @@ use {
     crate::AppState,
     axum::{
         extract::State,
-        http::{header, Request, StatusCode},
+        http::{Request, StatusCode, header},
         response::Response,
+        body::Body,
     },
-    reqwest::{redirect::Policy, Client},
+    reqwest::{Client, redirect::Policy},
 };
 
 pub async fn proxy_handler(
-    State(state): State<AppState>,
-    req: Request<axum::body::Body>,
-) -> Result<Response<axum::body::Body>, (StatusCode, String)> {
+    State(_state): State<AppState>,
+    req: Request<Body>,
+) -> Result<Response<Body>, (StatusCode, String)> {
     let path = req.uri().path().strip_prefix("/v1/proxy/").unwrap_or("");
     let query = req
         .uri()
@@ -38,27 +39,21 @@ pub async fn proxy_handler(
     }
 
     // Set the body
-    let body = hyper::body::to_bytes(req.into_body()).await.map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Failed to read request body: {}", e),
-        )
-    })?;
-    proxy_req = proxy_req.body(body);
+    let body_bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read request body: {}", e)))?;
+    proxy_req = proxy_req.body(body_bytes);
 
     // Send the request
     match proxy_req.send().await {
         Ok(res) => {
-            println!(
-                "Received response from upstream with status: {}",
-                res.status()
-            );
+            println!("Received response from upstream with status: {}", res.status());
             
             let mut response_builder = Response::builder().status(res.status());
 
             // Forward headers
             for (key, value) in res.headers() {
-                if key != header::TRANSFER_ENCODING {
+                if key != header::TRANSFER_ENCODING && key != header::CONTENT_LENGTH {
                     response_builder = response_builder.header(key, value);
                 }
             }
@@ -69,7 +64,10 @@ pub async fn proxy_handler(
                 .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS")
                 .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*");
 
-            let body = axum::body::Body::from_stream(res.bytes_stream());
+            // Convert the response body to axum's Body type
+            let body_bytes = res.bytes().await
+                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read response body: {}", e)))?;
+            let body = Body::from(body_bytes);
 
             Ok(response_builder.body(body).unwrap())
         }
