@@ -147,6 +147,7 @@ dependencies = [
  "ethers",
  "eventsource-stream",
  "futures",
+ "hyper 0.14.29",
  "jsonwebtoken",
  "rand",
  "regex",

@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::Bytes,
     extract::State,
     http::{Request, StatusCode},
     response::Response,
@@ -8,17 +8,22 @@ use crate::AppState;
 
 pub async fn proxy_handler(
     State(state): State<AppState>,
-    req: Request<Body>,
-) -> Result<Response<Body>, (StatusCode, String)> {
+    req: Request<axum::body::Body>,
+) -> Result<Response<axum::body::Body>, (StatusCode, String)> {
     let path = req.uri().path().strip_prefix("/v1/proxy/").unwrap_or("");
     let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
     
     let url = format!("https://{}{}", path, query);
 
+    let (parts, body) = req.into_parts();
+    let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read request body: {}", e))
+    })?;
+
     let client_req = state.client
-        .request(req.method().clone(), &url)
-        .headers(req.headers().clone())
-        .body(req.into_body());
+        .request(parts.method, &url)
+        .headers(parts.headers)
+        .body(bytes);
 
     match client_req.send().await {
         Ok(res) => {
