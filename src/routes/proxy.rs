@@ -17,7 +17,7 @@ pub async fn proxy_handler(
         .query()
         .map(|q| format!("?{}", q))
         .unwrap_or_default();
-    
+
     let url = format!("https://{}{}", path, query);
 
     let (parts, body) = req.into_parts();
