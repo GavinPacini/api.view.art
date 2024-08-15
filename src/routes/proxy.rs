@@ -5,7 +5,7 @@ use {
         http::{Request, StatusCode},
         response::Response,
     },
-}
+};
 
 pub async fn proxy_handler(
     State(state): State<AppState>,
