@@ -2,10 +2,10 @@ use {
     crate::AppState,
     axum::{
         extract::State,
-        http::{Request, StatusCode, header},
+        http::{header, Request, StatusCode},
         response::Response,
     },
-    reqwest::{Client, redirect::Policy},
+    reqwest::{redirect::Policy, Client},
 };
 
 pub async fn proxy_handler(
@@ -38,14 +38,21 @@ pub async fn proxy_handler(
     }
 
     // Set the body
-    let body = hyper::body::to_bytes(req.into_body()).await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read request body: {}", e)))?;
+    let body = hyper::body::to_bytes(req.into_body()).await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Failed to read request body: {}", e),
+        )
+    })?;
     proxy_req = proxy_req.body(body);
 
     // Send the request
     match proxy_req.send().await {
         Ok(res) => {
-            println!("Received response from upstream with status: {}", res.status());
+            println!(
+                "Received response from upstream with status: {}",
+                res.status()
+            );
             
             let mut response_builder = Response::builder().status(res.status());
 
