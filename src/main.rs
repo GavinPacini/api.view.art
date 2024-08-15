@@ -3,7 +3,10 @@ use {
     anyhow::{Context, Result},
     axum::{
         self,
-        http::{header, HeaderValue, Method},
+        body::Body,
+        extract::State,
+        http::{header, HeaderValue, Method, Request, StatusCode},
+        response::Response,
         routing::{get, post},
         Extension,
         Router,
@@ -31,6 +34,7 @@ struct AppState {
     changes: Changes,
     provider: Provider<Http>,
     keys: Keys,
+    client: reqwest::Client,
 }
 
 #[tokio::main]
@@ -65,12 +69,15 @@ async fn main() -> Result<()> {
 
     let changes = Changes::new();
 
+    let client = reqwest::Client::new();
+
     // build our application
     let app = app(AppState {
         pool,
         changes,
         provider,
         keys,
+        client,
     });
 
     // run it
@@ -107,6 +114,7 @@ fn app(state: AppState) -> Router {
                 "/wallet/:address/channels",
                 get(routes::wallet::get_channels),
             )
+            .route("/proxy/*path", get(routes::proxy::proxy_handler))
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
             .layer(
