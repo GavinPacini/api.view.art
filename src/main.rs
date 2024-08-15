@@ -33,7 +33,7 @@ struct AppState {
     changes: Changes,
     provider: Provider<Http>,
     keys: Keys,
-    stripe_crypto: StripeCrypto,
+    stripe_crypto: Arc<StripeCrypto>,
 }
 
 #[tokio::main]
@@ -68,14 +68,14 @@ async fn main() -> Result<()> {
 
     let changes = Changes::new();
 
-    let stripe_crypto = StripeCrypto::new(args.stripe_secret_key.clone());
+    let stripe_crypto = StripeCrypto::new(args.stripe_secret_key.clone().expose_secret().to_string());
 
     let app_state = AppState {
         pool,
         changes,
         provider,
         keys,
-        stripe_crypto,
+        stripe_crypto: Arc::new(stripe_crypto),
     };
 
     let app = app(app_state);

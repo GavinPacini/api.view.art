@@ -31,7 +31,7 @@ pub struct SessionResponse {
 }
 
 impl StripeCrypto {
-    pub fn new(secret_key: String) -> Self {
+    pub fn new(secret_key: impl Into<String>) -> Self {
         Self {
             client: Client::new(),
             secret_key,
