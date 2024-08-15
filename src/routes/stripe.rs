@@ -1,10 +1,13 @@
 use crate::AppState;
 use axum::{
     extract::State,
+    response::IntoResponse,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use crate::stripe_crypto::{StripeCrypto, CreateSessionParams, TransactionDetails};
+use axum::http::StatusCode;
+use serde_json::json;
 
 #[derive(Deserialize)]
 pub struct CreateSessionRequest {
@@ -25,28 +28,19 @@ pub async fn create_crypto_session(
     State(state): State<AppState>,
     Json(request): Json<CreateSessionRequest>,
 ) -> impl IntoResponse {
-    let stripe_crypto = StripeCrypto::new(state.stripe_secret_key.clone());
-
     let params = CreateSessionParams {
         transaction_details: TransactionDetails {
-            supported_destination_networks: vec![request.destination_network.clone()],
-            supported_destination_currencies: vec![request.destination_currency.clone()],
-            source_currency: request.source_currency,
-            source_exchange_amount: request.source_exchange_amount,
-            destination_network: request.destination_network,
             destination_currency: request.destination_currency,
+            destination_exchange_amount: request.destination_exchange_amount,
+            destination_network: request.destination_network,
         },
-        wallet_addresses: vec![request.wallet_address],
-        custom_fees: None,
+        customer_ip_address: None,
     };
 
-    match stripe_crypto.create_session(params).await {
+    match state.stripe_crypto.create_session(params).await {
         Ok(session) => (
             StatusCode::OK,
-            Json(CreateSessionResponse {
-                session_id: session.id,
-                client_secret: session.client_secret,
-            }),
+            Json(json!({ "clientSecret": session.client_secret })),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,

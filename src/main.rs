@@ -69,15 +69,15 @@ async fn main() -> Result<()> {
 
     let stripe_crypto = StripeCrypto::new(args.stripe_secret_key.clone());
 
-
-    // build our application
-    let app = app(AppState {
+    let app_state = AppState {
         pool,
         changes,
         provider,
         keys,
         stripe_crypto,
-    });
+    };
+
+    let app = app(app_state);
 
     // run it
     let listener =
