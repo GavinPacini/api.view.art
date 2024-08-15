@@ -177,6 +177,8 @@ mod tests {
 
         let changes = Changes::new();
 
+        let client = reqwest::Client::new();
+
         tokio::spawn(async {
             axum::serve(
                 listener,
@@ -185,6 +187,7 @@ mod tests {
                     changes,
                     provider,
                     keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
+                    client,
                 }),
             )
             .await
