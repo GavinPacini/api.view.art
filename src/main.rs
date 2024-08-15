@@ -32,7 +32,7 @@ struct AppState {
     changes: Changes,
     provider: Provider<Http>,
     keys: Keys,
-    stripe_secret_key: String,
+    stripe_crypto: StripeCrypto,
 }
 
 #[tokio::main]
@@ -76,6 +76,7 @@ async fn main() -> Result<()> {
         changes,
         provider,
         keys,
+        stripe_crypto,
     });
 
     // run it

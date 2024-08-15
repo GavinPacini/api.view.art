@@ -16,7 +16,7 @@ pub struct CreateSessionParams {
     pub customer_ip_address: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct TransactionDetails {
     pub destination_currency: String,
     pub destination_exchange_amount: u64,

@@ -3,6 +3,7 @@ use {axum::http::StatusCode, serde_json::json};
 pub mod auth;
 pub mod channel;
 pub mod wallet;
+pub mod stripe;
 
 /// Utility function for mapping any error into a `500 Internal Server Error`
 /// response.
