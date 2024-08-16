@@ -56,7 +56,7 @@ pub async fn proxy_handler(
                 "Received response from upstream with status: {}",
                 res.status()
             );
-            
+
             let mut response_builder = Response::builder().status(res.status());
 
             // Forward headers
