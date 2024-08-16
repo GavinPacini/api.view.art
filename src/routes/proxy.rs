@@ -20,7 +20,12 @@ pub async fn proxy_handler(
         .map(|q| format!("?{}", q))
         .unwrap_or_default();
 
-    let url = format!("https://{}{}", path, query);
+    // Correctly reconstruct the URL
+    let url = if path.starts_with("http://") || path.starts_with("https://") {
+        format!("{}{}", path, query)
+    } else {
+        format!("https://{}{}", path, query)
+    };
     println!("Proxying request to: {}", url);
 
     // Create a client that follows redirects
