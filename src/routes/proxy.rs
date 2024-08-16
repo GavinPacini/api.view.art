@@ -24,8 +24,13 @@ pub async fn proxy_handler(
         Err(_) => return Err((StatusCode::BAD_REQUEST, "Invalid URL".to_string())),
     };
 
-    println!("Parsed URL - Scheme: {}, Host: {:?}, Path: {}, Query: {:?}",
-         url.scheme(), url.host(), url.path(), url.query());
+    println!(
+        "Parsed URL - Scheme: {}, Host: {:?}, Path: {}, Query: {:?}",
+        url.scheme(),
+        url.host(),
+        url.path(),
+        url.query()
+    );
 
     println!("Proxying request to: {}", url);
 
@@ -47,7 +52,12 @@ pub async fn proxy_handler(
     // Set the body
     let body_bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read request body: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to read request body: {}", e),
+            )
+        })?;
     proxy_req = proxy_req.body(body_bytes);
 
     println!("Sending request: {:?}", proxy_req);
@@ -55,7 +65,10 @@ pub async fn proxy_handler(
     // Send the request
     match proxy_req.send().await {
         Ok(res) => {
-            println!("Received response from upstream with status: {}", res.status());
+            println!(
+                "Received response from upstream with status: {}", 
+                res.status()
+            );
 
             let mut response_builder = Response::builder().status(res.status());
 
@@ -73,8 +86,12 @@ pub async fn proxy_handler(
                 .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*");
 
             // Convert the response body to axum's Body type
-            let body_bytes = res.bytes().await
-                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read response body: {}", e)))?;
+            let body_bytes = res.bytes().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to read response body: {}", e),
+                )
+            })?;
             let body = Body::from(body_bytes);
 
             Ok(response_builder.body(body).unwrap())
@@ -82,7 +99,10 @@ pub async fn proxy_handler(
         Err(e) => {
             println!("Proxy error: {:?}", e);
             println!("Detailed error: {:?}", e);
-            Err((StatusCode::BAD_GATEWAY, format!("Failed to fetch from upstream server: {:?}", e)))
+            Err((
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to fetch from upstream server: {:?}", e),
+            ))
         }
     }
 }
