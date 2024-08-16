@@ -7,6 +7,7 @@ use {
         response::Response,
     },
     reqwest::{redirect::Policy, Client},
+    url::Url,
 };
 
 pub async fn proxy_handler(
@@ -14,18 +15,18 @@ pub async fn proxy_handler(
     req: Request<Body>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
     let path = req.uri().path().strip_prefix("/v1/proxy/").unwrap_or("");
-    let query = req
-        .uri()
-        .query()
-        .map(|q| format!("?{}", q))
-        .unwrap_or_default();
+    let query = req.uri().query().unwrap_or("");
 
-    // Correctly reconstruct the URL
-    let url = if path.starts_with("http://") || path.starts_with("https://") {
-        format!("{}{}", path, query)
-    } else {
-        format!("https://{}{}", path, query)
+    // Reconstruct the full URL
+    let full_url = format!("{}?{}", path, query);
+    let url = match Url::parse(&full_url) {
+        Ok(url) => url,
+        Err(_) => return Err((StatusCode::BAD_REQUEST, "Invalid URL".to_string())),
     };
+
+    println!("Parsed URL - Scheme: {}, Host: {:?}, Path: {}, Query: {:?}",
+         url.scheme(), url.host(), url.path(), url.query());
+
     println!("Proxying request to: {}", url);
 
     // Create a client that follows redirects
@@ -34,7 +35,7 @@ pub async fn proxy_handler(
         .build()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create client: {}", e)))?;
 
-    let mut proxy_req = client.request(req.method().clone(), &url);
+    let mut proxy_req = client.request(req.method().clone(), url);
 
     // Forward headers
     for (key, value) in req.headers() {
@@ -46,21 +47,15 @@ pub async fn proxy_handler(
     // Set the body
     let body_bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Failed to read request body: {}", e),
-            )
-        })?;
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to read request body: {}", e)))?;
     proxy_req = proxy_req.body(body_bytes);
+
+    println!("Sending request: {:?}", proxy_req);
 
     // Send the request
     match proxy_req.send().await {
         Ok(res) => {
-            println!(
-                "Received response from upstream with status: {}",
-                res.status()
-            );
+            println!("Received response from upstream with status: {}", res.status());
 
             let mut response_builder = Response::builder().status(res.status());
 
@@ -78,22 +73,16 @@ pub async fn proxy_handler(
                 .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*");
 
             // Convert the response body to axum's Body type
-            let body_bytes = res.bytes().await.map_err(|e| {
-                (
-                    StatusCode::BAD_GATEWAY,
-                    format!("Failed to read response body: {}", e),
-                )
-            })?;
+            let body_bytes = res.bytes().await
+                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read response body: {}", e)))?;
             let body = Body::from(body_bytes);
 
             Ok(response_builder.body(body).unwrap())
         }
         Err(e) => {
             println!("Proxy error: {:?}", e);
-            Err((
-                StatusCode::BAD_GATEWAY,
-                format!("Failed to fetch from upstream server: {:?}", e),
-            ))
+            println!("Detailed error: {:?}", e);
+            Err((StatusCode::BAD_GATEWAY, format!("Failed to fetch from upstream server: {:?}", e)))
         }
     }
 }
