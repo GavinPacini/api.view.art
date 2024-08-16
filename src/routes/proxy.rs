@@ -14,18 +14,34 @@ pub async fn proxy_handler(
     State(_state): State<AppState>,
     req: Request<Body>,
 ) -> Result<Response<Body>, (StatusCode, String)> {
-    let path = req.uri().path().strip_prefix("/v1/proxy/").unwrap_or("");
-    let query = req.uri().query().unwrap_or("");
+    let path_and_query = req
+        .uri()
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or("");
+    println!("Received Path and Query: {}", path_and_query);
 
-    // Reconstruct the full URL
-    let full_url = format!("{}?{}", path, query);
-    let url = match Url::parse(&full_url) {
+    // Ensure the correct prefix is stripped
+    let path = match path_and_query.strip_prefix("/proxy/") {
+        Some(p) => p,
+        None => {
+            return Err((StatusCode::BAD_REQUEST, "Invalid request path".to_string()));
+        }
+    };
+
+    println!("Path after stripping prefix: {}", path);
+
+    // Attempt to parse the full URL
+    let url = match Url::parse(path) {
         Ok(url) => url,
-        Err(_) => return Err((StatusCode::BAD_REQUEST, "Invalid URL".to_string())),
+        Err(e) => {
+            println!("URL parsing error: {}", e);
+            return Err((StatusCode::BAD_REQUEST, "Invalid URL".to_string()));
+        }
     };
 
     println!(
-        "Parsed URL - Scheme: {}, Host: {:?}, Path: {}, Query: {:?}",
+        "Parsed URL - Scheme: {},Host: {:?}, Path: {}, Query: {:?}",
         url.scheme(),
         url.host(),
         url.path(),
