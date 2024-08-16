@@ -6,7 +6,7 @@ use {
         http::{header, Request, StatusCode},
         response::Response,
     },
-    reqwest::{edirect::Policy, Client},
+    reqwest::{redirect::Policy, Client},
 };
 
 pub async fn proxy_handler(
