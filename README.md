@@ -13,7 +13,19 @@ Our vision is to create an ecosystem where multiple clients can interact with a 
 
 ## Development
 
-You can use a pre-commit hook to ensure that there are no formatting issues and no clippy issues in the code. See the file [`.githooks/pre-commit`](.githooks/pre-commit) for details and installation instructions.
+You can use a pre-commit hook to ensure that there are no formatting issues and no clippy issues in the code. See the file [`.githooks/pre-commit`](.githooks/pre-commit) for details and installation instructions. Otherwise, read on for manual instructions.
+
+### Formatting
+```bash
+cargo +nightly fmt --all
+```
+
+ - Formatting requires rust [nightly](https://doc.rust-lang.org/book/appendix-07-nightly-rust.html#rustup-and-the-role-of-rust-nightly).
+
+### Linting
+```bash
+cargo clippy --locked --workspace --all-features --all-targets -- -D warnings
+```
 
 ## Testing
 
