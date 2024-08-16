@@ -66,7 +66,7 @@ pub async fn proxy_handler(
     match proxy_req.send().await {
         Ok(res) => {
             println!(
-                "Received response from upstream with status: {}", 
+                "Received response from upstream with status: {}",
                 res.status()
             );
 
