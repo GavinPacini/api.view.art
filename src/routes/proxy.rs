@@ -110,16 +110,17 @@ pub async fn proxy_handler(
             })?;
             let body = Body::from(body_bytes);
 
-            let body = match body {
-                Ok(body) => body,
+            match response_builder.body(body) {
+                Ok(response) => Ok(response),
                 Err(e) => {
-                    tracing::error!("Failed to convert response body to axum Body: {}", e);
-                    return Err((
-                        StatusCode::BAD_GATEWAY,
-                        format!("Failed to convert response body to axum Body: {}", e),
-                    ));
+                    tracing::error!("Failed to build response: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to build response".to_string(),
+                    ))
                 }
-            };
+            }
+
         }
         Err(e) => {
             tracing::error!("Proxy error: {:?}", e);
