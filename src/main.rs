@@ -14,7 +14,10 @@ use {
     ethers::providers::{Http, Middleware, Provider},
     routes::auth::Keys,
     std::net::{Ipv4Addr, SocketAddr},
-    tower_http::{cors::CorsLayer, trace::TraceLayer},
+    tower_http::{
+        cors::{AllowOrigin, CorsLayer},
+        trace::TraceLayer,
+    },
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
@@ -115,7 +118,7 @@ fn app(state: AppState) -> Router {
             .layer(Extension(keys))
             .layer(
                 CorsLayer::new()
-                    .allow_any_origin()
+                    .allow_origin(AllowOrigin::any())
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                     .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
             )
