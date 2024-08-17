@@ -117,7 +117,9 @@ fn app(state: AppState) -> Router {
                 CorsLayer::new()
                     .allow_origin([
                         "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-                        "https://*.vercel.app".parse::<HeaderValue>().unwrap(),
+                        "https://view-51hlpyj3v-loudsqueaks-projects.vercel.app"
+                            .parse::<HeaderValue>()
+                            .unwrap(),
                         "https://macaw-resolved-arguably.ngrok-free.app"
                             .parse::<HeaderValue>()
                             .unwrap(),
