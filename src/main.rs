@@ -107,7 +107,8 @@ fn app(state: AppState) -> Router {
                 "/wallet/:address/channels",
                 get(routes::wallet::get_channels),
             )
-            .route("/proxy/*path", get(routes::proxy::proxy_handler))
+            .route("/proxy/*path", get(routes::proxy::proxy_handler)
+                .post(routes::proxy::proxy_handler))
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
             .layer(

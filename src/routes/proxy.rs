@@ -19,7 +19,7 @@ pub async fn proxy_handler(
         .path_and_query()
         .map(|pq| pq.as_str())
         .unwrap_or("");
-    println!("Received Path and Query: {}", path_and_query);
+    tracing::debug!("Received Path and Query: {}", path_and_query);
 
     // Ensure the correct prefix is stripped
     let path = match path_and_query.strip_prefix("/proxy/") {
@@ -29,18 +29,18 @@ pub async fn proxy_handler(
         }
     };
 
-    println!("Path after stripping prefix: {}", path);
+    tracing::debug!("Path after stripping prefix: {}", path);
 
     // Attempt to parse the full URL
     let url = match Url::parse(path) {
         Ok(url) => url,
         Err(e) => {
-            println!("URL parsing error: {}", e);
+            tracing::error!("URL parsing error: {}", e);
             return Err((StatusCode::BAD_REQUEST, "Invalid URL".to_string()));
         }
     };
 
-    println!(
+    tracing::debug!(
         "Parsed URL - Scheme: {},Host: {:?}, Path: {}, Query: {:?}",
         url.scheme(),
         url.host(),
@@ -48,7 +48,7 @@ pub async fn proxy_handler(
         url.query()
     );
 
-    println!("Proxying request to: {}", url);
+    tracing::debug!("Proxying request to: {}", url);
 
     // Create a client that follows redirects
     let client = Client::builder()
@@ -76,12 +76,12 @@ pub async fn proxy_handler(
         })?;
     proxy_req = proxy_req.body(body_bytes);
 
-    println!("Sending request: {:?}", proxy_req);
+    tracing::debug!("Sending request: {:?}", proxy_req);
 
     // Send the request
     match proxy_req.send().await {
         Ok(res) => {
-            println!(
+            tracing::debug!(
                 "Received response from upstream with status: {}",
                 res.status()
             );
@@ -110,11 +110,19 @@ pub async fn proxy_handler(
             })?;
             let body = Body::from(body_bytes);
 
-            Ok(response_builder.body(body).unwrap())
+            let body = match body {
+                Ok(body) => body,
+                Err(e) => {
+                    tracing::error!("Failed to convert response body to axum Body: {}", e);
+                    return Err((
+                        StatusCode::BAD_GATEWAY,
+                        format!("Failed to convert response body to axum Body: {}", e),
+                    ));
+                }
+            };
         }
         Err(e) => {
-            println!("Proxy error: {:?}", e);
-            println!("Detailed error: {:?}", e);
+            tracing::error!("Proxy error: {:?}", e);
             Err((
                 StatusCode::BAD_GATEWAY,
                 format!("Failed to fetch from upstream server: {:?}", e),
