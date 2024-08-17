@@ -115,7 +115,7 @@ fn app(state: AppState) -> Router {
             .layer(Extension(keys))
             .layer(
                 CorsLayer::new()
-                    .allow_origin(Any) 
+                    .allow_any_origin()
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                     .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
             )
