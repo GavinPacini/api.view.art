@@ -109,7 +109,7 @@ fn app(state: AppState) -> Router {
             )
             .route(
                 "/proxy/*path",
-                get(routes::proxy::proxy_handler).post(routes::proxy::proxy_handler)
+                get(routes::proxy::proxy_handler).post(routes::proxy::proxy_handler),
             )
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
