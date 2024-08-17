@@ -120,7 +120,6 @@ pub async fn proxy_handler(
                     ))
                 }
             }
-
         }
         Err(e) => {
             tracing::error!("Proxy error: {:?}", e);
