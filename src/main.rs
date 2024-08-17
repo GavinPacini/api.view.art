@@ -127,7 +127,7 @@ fn app(state: AppState) -> Router {
                             })
                     })
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                    .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
+                    .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
             )
             .with_state(state),
     )
