@@ -115,21 +115,20 @@ fn app(state: AppState) -> Router {
             .layer(Extension(keys))
             .layer(
                 CorsLayer::new()
-                    .allow_origin([
-                        "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-                        "https://view-51hlpyj3v-loudsqueaks-projects.vercel.app"
-                            .parse::<HeaderValue>()
-                            .unwrap(),
-                        "https://macaw-resolved-arguably.ngrok-free.app"
-                            .parse::<HeaderValue>()
-                            .unwrap(),
-                        "https://gentle-flea-officially.ngrok-free.app"
-                            .parse::<HeaderValue>()
-                            .unwrap(),
-                        "https://view.art".parse::<HeaderValue>().unwrap(),
-                    ])
-                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                    .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
+                    .allow_origin_fn(|origin, _| {
+                        origin
+                            .and_then(|origin| origin.to_str().ok())
+                            .map_or(false, |origin| {
+                                origin == "http://localhost:5173"
+                                || origin == "https://view.art"
+                                || origin.ends_with(".vercel.app")
+                                || origin == "https://macaw-resolved-arguably.ngrok-free.app"
+                                || origin == "https://gentle-flea-officially.ngrok-free.app"
+                            }
+            )
+    })
+    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+    .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
             )
             .with_state(state),
     )
