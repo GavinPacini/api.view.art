@@ -3,7 +3,7 @@ use {
     anyhow::{Context, Result},
     axum::{
         self,
-        http::{header, HeaderValue, Method},
+        http::{header, Method},
         routing::{get, post},
         Extension,
         Router,
@@ -115,17 +115,7 @@ fn app(state: AppState) -> Router {
             .layer(Extension(keys))
             .layer(
                 CorsLayer::new()
-                    .allow_origin_fn(|origin, _| {
-                        origin
-                            .and_then(|origin| origin.to_str().ok())
-                            .map_or(false, |origin| {
-                                origin == "http://localhost:5173"
-                                    || origin == "https://view.art"
-                                    || origin.ends_with(".vercel.app")
-                                    || origin == "https://macaw-resolved-arguably.ngrok-free.app"
-                                    || origin == "https://gentle-flea-officially.ngrok-free.app"
-                            })
-                    })
+                    .allow_origin(Any) 
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                     .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
             )
