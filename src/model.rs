@@ -62,7 +62,7 @@ impl Default for EmptyChannelContent {
 impl FromRedisValue for ChannelContent {
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         let s = match v {
-            Value::Data(data) => std::str::from_utf8(data).map_err(|err| {
+            Value::BulkString(data) => std::str::from_utf8(data).map_err(|err| {
                 RedisError::from((
                     bb8_redis::redis::ErrorKind::TypeError,
                     "Error parsing string from utf8",
