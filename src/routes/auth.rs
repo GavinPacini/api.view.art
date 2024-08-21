@@ -27,7 +27,7 @@ use {
     siwe::{generate_nonce, VerificationError},
 };
 
-const NONCE_EXPIRY: usize = 120;
+const NONCE_EXPIRY: u64 = 120;
 
 pub async fn get_nonce(
     state: State<AppState>,

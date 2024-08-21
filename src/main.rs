@@ -46,7 +46,10 @@ async fn main() -> Result<()> {
     let args = Args::load().await?;
     tracing::info!("Running with args: {args:?}");
 
-    let manager = RedisConnectionManager::new::<String>(args.redis_url.into()).unwrap();
+    // needed because Heroku Redis uses self-signed certificates
+    let insecure_redis_url = format!("{}/#insecure", String::from(args.redis_url));
+
+    let manager = RedisConnectionManager::new::<String>(insecure_redis_url).unwrap();
     let pool = Pool::builder().build(manager).await.unwrap();
     {
         // ping the database before starting
