@@ -27,7 +27,8 @@ use {
     siwe::{generate_nonce, VerificationError},
 };
 
-const NONCE_EXPIRY: u64 = 120;
+/// 1 hour
+const NONCE_EXPIRY: u64 = 60 * 60;
 
 pub async fn get_nonce(
     state: State<AppState>,
@@ -35,24 +36,41 @@ pub async fn get_nonce(
 ) -> impl IntoResponse {
     tracing::info!("getting nonce for {:?}", address);
 
-    let random_nonce = generate_nonce();
+    let nonce_key = format!("nonce:{:?}:{}", address, chain_id);
 
     match state.pool.get().await {
         Ok(mut conn) => match conn
-            .set_options::<&str, String, ()>(
-                &format!("nonce:{:?}:{}", address, chain_id),
-                random_nonce.to_string(),
-                SetOptions::default().with_expiration(SetExpiry::EX(NONCE_EXPIRY)),
-            )
+            .get_ex::<&str, String>(&nonce_key, redis::Expiry::EX(NONCE_EXPIRY))
             .await
         {
-            Ok(_) => (
+            Ok(nonce) => (
                 StatusCode::OK,
-                json!({ "status": true, "nonce": random_nonce }).to_string(),
+                json!({ "status": true, "nonce": nonce }).to_string(),
             ),
-            Err(err) => {
-                tracing::error!("Error setting nonce for address {}: {:?}", address, err);
-                internal_error(anyhow!(err))
+            Err(_) => {
+                tracing::info!(
+                    "No nonce found for address {}, generating new nonce",
+                    address
+                );
+                let random_nonce = generate_nonce();
+
+                match conn
+                    .set_options::<&str, String, ()>(
+                        &format!("nonce:{:?}:{}", address, chain_id),
+                        random_nonce.clone(),
+                        SetOptions::default().with_expiration(SetExpiry::EX(NONCE_EXPIRY)),
+                    )
+                    .await
+                {
+                    Ok(_) => (
+                        StatusCode::OK,
+                        json!({ "status": true, "nonce": random_nonce }).to_string(),
+                    ),
+                    Err(err) => {
+                        tracing::error!("Error setting nonce for address {}: {:?}", address, err);
+                        internal_error(anyhow!(err))
+                    }
+                }
             }
         },
         Err(err) => {
@@ -71,11 +89,10 @@ pub async fn verify_auth(
 
     tracing::info!("verifying auth for {:?}", address);
 
+    let nonce_key = format!("nonce:{:?}:{}", address, chain_id);
+
     match state.pool.get().await {
-        Ok(mut conn) => match conn
-            .get::<&str, String>(&format!("nonce:{:?}:{}", address, chain_id))
-            .await
-        {
+        Ok(mut conn) => match conn.get::<&str, String>(&nonce_key).await {
             Ok(nonce) => {
                 let verify_error = match (
                     message.valid_now(),
@@ -100,6 +117,16 @@ pub async fn verify_auth(
                 {
                     Ok(_) => {
                         tracing::debug!("signature verified");
+
+                        if let Err(err) = conn.del::<&str, ()>(&nonce_key).await {
+                            tracing::error!(
+                                "Error deleting nonce for address {}: {:?}",
+                                address,
+                                err
+                            );
+                            return internal_error(anyhow!(err));
+                        }
+
                         let claims = Claims {
                             address: Address::from(message.address),
                             // 30 days from now
