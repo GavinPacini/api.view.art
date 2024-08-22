@@ -415,7 +415,7 @@ Issued At: {}"#,
         let message: Message = msg.parse().unwrap();
 
         let signature = wallet
-            .sign_message(&message.to_string())
+            .sign_message(message.to_string())
             .await
             .unwrap()
             .to_string();
