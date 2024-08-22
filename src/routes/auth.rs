@@ -118,16 +118,13 @@ pub async fn verify_auth(
                     Ok(_) => {
                         tracing::debug!("signature verified");
 
-                        match conn.del::<&str, ()>(&nonce_key).await {
-                            Ok(_) => (),
-                            Err(err) => {
-                                tracing::error!(
-                                    "Error deleting nonce for address {}: {:?}",
-                                    address,
-                                    err
-                                );
-                                return internal_error(anyhow!(err));
-                            }
+                        if let Err(err) = conn.del::<&str, ()>(&nonce_key).await {
+                            tracing::error!(
+                                "Error deleting nonce for address {}: {:?}",
+                                address,
+                                err
+                            );
+                            return internal_error(anyhow!(err));
                         }
 
                         let claims = Claims {
