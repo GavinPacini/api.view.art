@@ -140,12 +140,17 @@ mod tests {
     use {
         super::*,
         caip::asset_id::AssetId,
-        chrono::Utc,
+        chrono::{SecondsFormat, Utc},
+        ethers::{
+            signers::{Signer, Wallet},
+            utils::to_checksum,
+        },
         eventsource_stream::Eventsource,
         futures::StreamExt,
-        model::{ChannelContent, EmptyChannelContent, Item, Played},
+        model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Played, VerifyAuth},
         routes::auth::tests::get_team_api_key,
         serde_json::Value,
+        siwe::Message,
         tokio::net::TcpListener,
         url::Url,
     };
@@ -370,9 +375,117 @@ mod tests {
 
         assert!(i == 3);
 
-        // TODO: create a wallet
-        // TODO: get nonce
-        // TODO: generate and sign SIWE message
-        // TODO: test we can set the channel channel correctly
+        // Now we test with a wallet / user rather than the team API key
+
+        let mut rng = rand::thread_rng();
+        let wallet = Wallet::new(&mut rng);
+
+        let nonce = reqwest::Client::new()
+            .post(&format!("{}/v1/nonce", listening_url))
+            .header("User-Agent", "integration_test")
+            .json(&GetAuth {
+                address: wallet.address(),
+                chain_id: 8453,
+            })
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()["nonce"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let msg = format!(
+            r#"view.art wants you to sign in with your Ethereum account:
+{}
+
+To finish connecting, you must sign a message in your wallet to verify that you are the owner of this account.
+
+URI: https://view.art
+Version: 1
+Chain ID: 8453
+Nonce: {}
+Issued At: {}"#,
+            to_checksum(&wallet.address(), None),
+            nonce,
+            Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+        );
+        let message: Message = msg.parse().unwrap();
+
+        let signature = wallet
+            .sign_message(&message.to_string())
+            .await
+            .unwrap()
+            .to_string();
+
+        let authorization = reqwest::Client::new()
+            .post(&format!("{}/v1/auth", listening_url))
+            .header("User-Agent", "integration_test")
+            .json(&VerifyAuth { message, signature })
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()["token"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let result = reqwest::Client::new()
+            .post(&format!("{}/v1/channel/test", listening_url))
+            .header("User-Agent", "integration_test")
+            .header("Authorization", format!("Bearer {}", authorization))
+            .json(&ChannelContent {
+                items: vec![Item {
+                    id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
+                        .parse::<AssetId>()
+                        .unwrap(),
+                    title: "test".to_string(),
+                    artist: Some("test".to_string()),
+                    url: Url::parse("https://test.com").unwrap(),
+                    thumbnail_url: Url::parse("https://test.com").unwrap(),
+                    apply_matte: false,
+                    activate_by: "".to_string(),
+                }],
+                played: Played {
+                    item: 0,
+                    at: Utc::now(),
+                },
+            })
+            .send()
+            .await
+            .unwrap();
+
+        assert!(result.status().is_client_error());
+
+        let result = reqwest::Client::new()
+            .post(&format!("{}/v1/channel/test-user", listening_url))
+            .header("User-Agent", "integration_test")
+            .header("Authorization", format!("Bearer {}", authorization))
+            .json(&ChannelContent {
+                items: vec![Item {
+                    id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
+                        .parse::<AssetId>()
+                        .unwrap(),
+                    title: "test".to_string(),
+                    artist: Some("test".to_string()),
+                    url: Url::parse("https://test.com").unwrap(),
+                    thumbnail_url: Url::parse("https://test.com").unwrap(),
+                    apply_matte: false,
+                    activate_by: "".to_string(),
+                }],
+                played: Played {
+                    item: 0,
+                    at: Utc::now(),
+                },
+            })
+            .send()
+            .await
+            .unwrap();
+
+        assert!(result.status().is_success());
     }
 }
