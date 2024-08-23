@@ -41,7 +41,7 @@ Note: this flushes the redis database before running the tests.
 
 1. Create and complete a `.env` file using `.env.example` as a template.
 2. Run required services: `docker compose up`.
-3. Run the backend: `cargo run`.
+3. Run the backend on port 3000: `cargo run`.
 
 Notes:
 
