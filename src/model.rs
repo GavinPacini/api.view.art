@@ -2,7 +2,7 @@ use {
     crate::caip::asset_id::AssetId,
     bb8_redis::redis::{FromRedisValue, RedisError, RedisResult, Value},
     chrono::{DateTime, Utc},
-    ethers::types::Address,
+    ethers::types::{Address, Bytes},
     serde::{Deserialize, Serialize},
     siwe::Message,
     url::Url,
@@ -21,7 +21,7 @@ pub struct GetAuth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifyAuth {
     pub message: Message,
-    pub signature: String,
+    pub signature: Bytes,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

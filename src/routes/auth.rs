@@ -24,7 +24,7 @@ use {
     jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation},
     serde::{Deserialize, Serialize},
     serde_json::json,
-    siwe::{generate_nonce, VerificationError},
+    siwe::{generate_nonce, VerificationOpts},
 };
 
 /// 1 hour
@@ -94,25 +94,16 @@ pub async fn verify_auth(
     match state.pool.get().await {
         Ok(mut conn) => match conn.get::<&str, String>(&nonce_key).await {
             Ok(nonce) => {
-                let verify_error = match (
-                    message.valid_now(),
-                    message.domain == "view.art",
-                    message.nonce == nonce,
-                ) {
-                    (false, _, _) => Err(VerificationError::Time),
-                    (_, false, _) => Err(VerificationError::DomainMismatch),
-                    (_, _, false) => Err(VerificationError::NonceMismatch),
-                    _ => Ok(()),
-                };
-
-                if let Err(e) = verify_error {
-                    return internal_error(anyhow!(e));
-                }
-
-                // TODO: Support verifying both eip191 and eip1271
-                // Tried using the `verify` method which should try both, but it doesn't work
                 match message
-                    .verify_eip1271(signature.as_bytes(), &state.provider)
+                    .verify(
+                        &signature,
+                        &VerificationOpts {
+                            rpc_provider: Some(state.provider.clone()),
+                            domain: Some("view.art".parse().unwrap()),
+                            nonce: Some(nonce),
+                            ..Default::default()
+                        },
+                    )
                     .await
                 {
                     Ok(_) => {

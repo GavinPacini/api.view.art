@@ -146,6 +146,7 @@ mod tests {
         chrono::{SecondsFormat, Utc},
         ethers::{
             signers::{Signer, Wallet},
+            types::Bytes,
             utils::to_checksum,
         },
         eventsource_stream::Eventsource,
@@ -159,7 +160,7 @@ mod tests {
     };
 
     const REDIS_URL: &str = "redis://localhost:6379";
-    const BASE_RPC_URL: &str = "https://base.drpc.org";
+    const BASE_RPC_URL: &str = "https://mainnet.base.org";
     const JWT_SECRET: &str = "secret";
 
     /// A helper function that spawns our application in the background
@@ -207,7 +208,7 @@ mod tests {
         format!("http://{}:{}", host, port)
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn integration_test() {
         let listening_url = spawn_app("127.0.0.1").await;
 
@@ -420,11 +421,12 @@ Issued At: {}"#,
         );
         let message: Message = msg.parse().unwrap();
 
-        let signature = wallet
+        let signature: Bytes = wallet
             .sign_message(message.to_string())
             .await
             .unwrap()
-            .to_string();
+            .to_vec()
+            .into();
 
         let authorization = reqwest::Client::new()
             .post(&format!("{}/v1/auth", listening_url))
