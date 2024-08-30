@@ -18,6 +18,10 @@ pub struct Args {
     /// Secret key for JWT
     #[arg(long, env)]
     pub jwt_secret: SecretString,
+
+    /// Optional list of extra allowed origins
+    #[arg(long, env)]
+    pub allowed_origins: Option<Vec<String>>,
 }
 
 impl Args {
