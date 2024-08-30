@@ -75,11 +75,10 @@ async fn main() -> Result<()> {
 
     let changes = Changes::new();
 
-    let allowed_origins = ALLOWED_ORIGINS
+    let allowed_origins: Vec<HeaderValue> = ALLOWED_ORIGINS
         .iter()
-        .map(|origin| origin.to_string())
-        .chain(args.allowed_origins.unwrap_or_default())
         .map(|origin| origin.parse::<HeaderValue>().unwrap())
+        .chain(args.allowed_origins.unwrap_or_default())
         .collect::<Vec<_>>();
 
     // build our application

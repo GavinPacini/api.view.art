@@ -1,4 +1,9 @@
-use {crate::utils::secret_string::SecretString, anyhow::Result, clap::Parser};
+use {
+    crate::utils::secret_string::SecretString,
+    anyhow::Result,
+    axum::http::HeaderValue,
+    clap::Parser,
+};
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -20,8 +25,8 @@ pub struct Args {
     pub jwt_secret: SecretString,
 
     /// Optional list of extra allowed origins
-    #[arg(long, env)]
-    pub allowed_origins: Option<Vec<String>>,
+    #[arg(long, env, use_value_delimiter(true), value_delimiter(','))]
+    pub allowed_origins: Option<Vec<HeaderValue>>,
 }
 
 impl Args {
