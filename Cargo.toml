@@ -45,4 +45,4 @@ siwe = { version = "0.6", features = ["serde", "ethers"] }
 
 [dev-dependencies]
 eventsource-stream = "0.2"
-reqwest-eventsource = "0.5"
+test-log = {version = "0.2.16", features = ["trace"]}

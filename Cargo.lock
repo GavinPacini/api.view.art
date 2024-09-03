@@ -152,10 +152,10 @@ dependencies = [
  "redis",
  "regex",
  "reqwest 0.12.5",
- "reqwest-eventsource",
  "serde",
  "serde_json",
  "siwe",
+ "test-log",
  "tokio",
  "tokio-stream",
  "tower",
@@ -1008,6 +1008,27 @@ dependencies = [
  "serde",
  "sha3",
  "zeroize",
+]
+
+[[package]]
+name = "env_filter"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f2c92ceda6ceec50f43169f9ee8424fe2db276791afde7b2cd8bc084cb376ab"
+dependencies = [
+ "log",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e13fa619b91fb2381732789fc5de83b45675e882f66623b7d8cb4f643017018d"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "env_filter",
+ "log",
 ]
 
 [[package]]
@@ -3006,12 +3027,10 @@ dependencies = [
  "system-configuration",
  "tokio",
  "tokio-rustls 0.24.1",
- "tokio-util",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams",
  "web-sys",
  "webpki-roots",
  "winreg 0.50.0",
@@ -3060,22 +3079,6 @@ dependencies = [
  "wasm-streams",
  "web-sys",
  "winreg 0.52.0",
-]
-
-[[package]]
-name = "reqwest-eventsource"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f529a5ff327743addc322af460761dff5b50e0c826b9e6ac44c3195c50bb2026"
-dependencies = [
- "eventsource-stream",
- "futures-core",
- "futures-timer",
- "mime",
- "nom",
- "pin-project-lite",
- "reqwest 0.11.27",
- "thiserror",
 ]
 
 [[package]]
@@ -3797,6 +3800,28 @@ dependencies = [
  "dirs-next",
  "rustversion",
  "winapi",
+]
+
+[[package]]
+name = "test-log"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3dffced63c2b5c7be278154d76b479f9f9920ed34e7574201407f0b14e2bbb93"
+dependencies = [
+ "env_logger",
+ "test-log-macros",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "test-log-macros"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5999e24eaa32083191ba4e425deb75cdf25efefabe5aaccb7446dd0d4122a3f5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.68",
 ]
 
 [[package]]
