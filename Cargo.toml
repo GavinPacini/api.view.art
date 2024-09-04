@@ -17,7 +17,11 @@ reqwest = { version = "0.12", features = ["stream", "json"] }
 # db
 bb8 = "0.8"
 bb8-redis = "0.16"
-redis = { version = "0.26", features = ["tokio-comp", "tokio-rustls-comp", "tls-rustls-insecure"] }
+redis = { version = "0.26", features = [
+  "tokio-comp",
+  "tokio-rustls-comp",
+  "tls-rustls-insecure",
+] }
 
 # errors, logging, tracing
 anyhow = "1.0"
@@ -40,9 +44,10 @@ url = { version = "2", features = ["serde"] }
 jsonwebtoken = "8.0"
 
 # crypto
-ethers = { version = "2.0", features = ["rustls"] }
-siwe = { version = "0.6", features = ["serde", "ethers"] }
+alloy = { version = "0.3", features = ["full"] }
+siwe = { version = "0.6", features = ["serde"] }
+erc6492 = { git = "https://github.com/devanoneth/erc6492" }
 
 [dev-dependencies]
 eventsource-stream = "0.2"
-test-log = {version = "0.2.16", features = ["trace"]}
+test-log = { version = "0.2.16", features = ["trace"] }
