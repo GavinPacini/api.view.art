@@ -4,6 +4,7 @@ use {
         routes::internal_error,
         AppState,
     },
+    alloy::primitives::Address,
     anyhow::anyhow,
     axum::{
         async_trait,
@@ -20,11 +21,11 @@ use {
     },
     bb8_redis::redis::{AsyncCommands, SetExpiry, SetOptions},
     chrono::Utc,
-    ethers::types::Address,
+    erc6492::verify_signature,
     jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation},
     serde::{Deserialize, Serialize},
     serde_json::json,
-    siwe::{generate_nonce, VerificationOpts},
+    siwe::{generate_nonce, VerificationError},
 };
 
 /// 1 hour
@@ -94,20 +95,43 @@ pub async fn verify_auth(
     match state.pool.get().await {
         Ok(mut conn) => match conn.get::<&str, String>(&nonce_key).await {
             Ok(nonce) => {
-                match message
-                    .verify(
-                        &signature,
-                        &VerificationOpts {
-                            rpc_provider: Some(state.provider.clone()),
-                            domain: Some("view.art".parse().unwrap()),
-                            nonce: Some(nonce),
-                            ..Default::default()
-                        },
-                    )
-                    .await
+                let verify_error = match (
+                    message.valid_now(),
+                    message.domain == "view.art",
+                    message.nonce == nonce,
+                ) {
+                    (false, _, _) => Err(VerificationError::Time),
+                    (_, false, _) => Err(VerificationError::DomainMismatch),
+                    (_, _, false) => Err(VerificationError::NonceMismatch),
+                    _ => Ok(()),
+                };
+
+                if let Err(e) = verify_error {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        json!({ "status": false, "error": e.to_string() }).to_string(),
+                    );
+                }
+
+                match verify_signature(
+                    signature,
+                    address,
+                    message.to_string().as_bytes(),
+                    state.provider.clone(),
+                )
+                .await
                 {
-                    Ok(_) => {
-                        tracing::debug!("signature verified");
+                    Ok(verification) => {
+                        if !verification.is_valid() {
+                            tracing::debug!("signature invalid");
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                json!({ "status": false, "error": "signature invalid" })
+                                    .to_string(),
+                            );
+                        }
+
+                        tracing::debug!("signature valid");
 
                         if let Err(err) = conn.del::<&str, ()>(&nonce_key).await {
                             tracing::error!(

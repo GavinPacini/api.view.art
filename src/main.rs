@@ -1,5 +1,15 @@
 use {
     crate::args::Args,
+    alloy::{
+        network::Ethereum,
+        providers::{
+            fillers::{FillProvider, RecommendedFiller},
+            Provider,
+            ProviderBuilder,
+            ReqwestProvider,
+        },
+        transports::http::Http,
+    },
     anyhow::{Context, Result},
     axum::{
         self,
@@ -11,7 +21,6 @@ use {
     bb8::Pool,
     bb8_redis::{redis::AsyncCommands, RedisConnectionManager},
     changes::Changes,
-    ethers::providers::{Http, Middleware, Provider},
     routes::auth::Keys,
     std::net::{Ipv4Addr, SocketAddr},
     tower_http::{cors::CorsLayer, trace::TraceLayer},
@@ -36,7 +45,7 @@ const ALLOWED_ORIGINS: &[&str] = &[
 struct AppState {
     pool: Pool<RedisConnectionManager>,
     changes: Changes,
-    provider: Provider<Http>,
+    provider: FillProvider<RecommendedFiller, ReqwestProvider, Http<reqwest::Client>, Ethereum>,
     keys: Keys,
 }
 
@@ -67,8 +76,11 @@ async fn main() -> Result<()> {
     }
     tracing::debug!("successfully connected to redis and pinged it");
 
-    let provider = Provider::<Http>::try_from(String::from(args.base_rpc_url)).unwrap();
-    let chain_id = provider.get_chainid().await.unwrap();
+    let rpc_url = String::from(args.base_rpc_url).parse()?;
+    let provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .on_http(rpc_url);
+    let chain_id = provider.get_chain_id().await.unwrap();
     tracing::debug!("connected to chain id {:?}", chain_id);
 
     let keys = Keys::new(String::from(args.jwt_secret).as_bytes());
@@ -142,13 +154,12 @@ fn app(allowed_origins: Vec<HeaderValue>, state: AppState) -> Router {
 mod tests {
     use {
         super::*,
+        alloy::{
+            primitives::Bytes,
+            signers::{local::PrivateKeySigner, Signer},
+        },
         caip::asset_id::AssetId,
         chrono::{SecondsFormat, Utc},
-        ethers::{
-            signers::{Signer, Wallet},
-            types::Bytes,
-            utils::to_checksum,
-        },
         eventsource_stream::Eventsource,
         futures::StreamExt,
         model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Played, VerifyAuth},
@@ -182,8 +193,10 @@ mod tests {
         }
         tracing::debug!("successfully connected to redis and pinged it");
 
-        let provider = Provider::<Http>::try_from(BASE_RPC_URL).unwrap();
-        let chain_id = provider.get_chainid().await.unwrap();
+        let provider = ProviderBuilder::new()
+            .with_recommended_fillers()
+            .on_http(BASE_RPC_URL.parse().unwrap());
+        let chain_id = provider.get_chain_id().await.unwrap();
         tracing::debug!("connected to chain id {:?}", chain_id);
 
         let changes = Changes::new();
@@ -322,7 +335,7 @@ mod tests {
                                 .get(&format!(
                                     "{}/v1/wallet/{:#?}/channels",
                                     listening_url,
-                                    ethers::types::Address::zero()
+                                    alloy::primitives::Address::ZERO
                                 ))
                                 .header("User-Agent", "integration_test")
                                 .send()
@@ -383,15 +396,13 @@ mod tests {
         assert!(i == 3);
 
         // Now we test with a wallet / user rather than the team API key
-
-        let mut rng = rand::thread_rng();
-        let wallet = Wallet::new(&mut rng);
+        let signer = PrivateKeySigner::random();
 
         let nonce = reqwest::Client::new()
             .post(&format!("{}/v1/nonce", listening_url))
             .header("User-Agent", "integration_test")
             .json(&GetAuth {
-                address: wallet.address(),
+                address: signer.address(),
                 chain_id: 8453,
             })
             .send()
@@ -415,17 +426,17 @@ Version: 1
 Chain ID: 8453
 Nonce: {}
 Issued At: {}"#,
-            to_checksum(&wallet.address(), None),
+            signer.address().to_checksum(None),
             nonce,
             Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
         );
         let message: Message = msg.parse().unwrap();
 
-        let signature: Bytes = wallet
-            .sign_message(message.to_string())
+        let signature: Bytes = signer
+            .sign_message(message.to_string().as_bytes())
             .await
             .unwrap()
-            .to_vec()
+            .as_bytes()
             .into();
 
         let authorization = reqwest::Client::new()

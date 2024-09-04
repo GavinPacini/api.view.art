@@ -1,6 +1,6 @@
 use {
-    crate::{model::ADDRESS_KEY, routes::internal_error, AppState},
-    anyhow::anyhow,
+    crate::{model::ADDRESS_KEY, AppState},
+    alloy::primitives::Address,
     axum::{
         extract::{Path, State},
         http::StatusCode,
@@ -12,16 +12,8 @@ use {
 
 pub async fn get_channels(
     state: State<AppState>,
-    Path(address): Path<String>,
+    Path(address): Path<Address>,
 ) -> impl IntoResponse {
-    let address = match address.parse::<ethers::types::Address>() {
-        Ok(address) => address,
-        Err(err) => {
-            tracing::error!("Error parsing address: {:?}", err);
-            return internal_error(anyhow!(err));
-        }
-    };
-
     tracing::info!("get channels for address {}", address);
 
     let key = format!("{}:{}", ADDRESS_KEY, address);
