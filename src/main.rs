@@ -237,7 +237,7 @@ mod tests {
 
                             // check if channel is taken
                             let result = reqwest::Client::new()
-                                .get(&format!("{}/v1/channel/test/taken", listening_url))
+                                .get(format!("{}/v1/channel/test/taken", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .send()
                                 .await
@@ -250,7 +250,7 @@ mod tests {
 
                             // setting the channel without the team API key should fail
                             let result = reqwest::Client::new()
-                                .post(&format!("{}/v1/channel/test", listening_url))
+                                .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .json(&ChannelContent {
                                     items: vec![Item {
@@ -274,7 +274,7 @@ mod tests {
 
                             // set channel to 1 using the team API key
                             reqwest::Client::new()
-                                .post(&format!("{}/v1/channel/test", listening_url))
+                                .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&ChannelContent {
@@ -305,7 +305,7 @@ mod tests {
 
                             // check if channel is taken
                             let result = reqwest::Client::new()
-                                .get(&format!("{}/v1/channel/test/taken", listening_url))
+                                .get(format!("{}/v1/channel/test/taken", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .send()
                                 .await
@@ -318,7 +318,7 @@ mod tests {
 
                             // check if channel is in list of channels for address
                             let result = reqwest::Client::new()
-                                .get(&format!(
+                                .get(format!(
                                     "{}/v1/wallet/{:#?}/channels",
                                     listening_url,
                                     ethers::types::Address::zero()
@@ -337,7 +337,7 @@ mod tests {
 
                             // set played item to 1
                             reqwest::Client::new()
-                                .post(&format!("{}/v1/channel/test", listening_url))
+                                .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&ChannelContent {
@@ -387,7 +387,7 @@ mod tests {
         let wallet = Wallet::new(&mut rng);
 
         let nonce = reqwest::Client::new()
-            .post(&format!("{}/v1/nonce", listening_url))
+            .post(format!("{}/v1/nonce", listening_url))
             .header("User-Agent", "integration_test")
             .json(&GetAuth {
                 address: wallet.address(),
@@ -427,7 +427,7 @@ Issued At: {}"#,
             .to_string();
 
         let authorization = reqwest::Client::new()
-            .post(&format!("{}/v1/auth", listening_url))
+            .post(format!("{}/v1/auth", listening_url))
             .header("User-Agent", "integration_test")
             .json(&VerifyAuth { message, signature })
             .send()
@@ -441,7 +441,7 @@ Issued At: {}"#,
             .to_string();
 
         let result = reqwest::Client::new()
-            .post(&format!("{}/v1/channel/test", listening_url))
+            .post(format!("{}/v1/channel/test", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
             .json(&ChannelContent {
@@ -468,7 +468,7 @@ Issued At: {}"#,
         assert!(result.status().is_client_error());
 
         let result = reqwest::Client::new()
-            .post(&format!("{}/v1/channel/test-user", listening_url))
+            .post(format!("{}/v1/channel/test-user", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
             .json(&ChannelContent {
