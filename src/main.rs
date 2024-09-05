@@ -190,12 +190,15 @@ mod tests {
         tokio::spawn(async {
             axum::serve(
                 listener,
-                app(AppState {
-                    pool,
-                    changes,
-                    provider,
-                    keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
-                }),
+                app(
+                    vec![],
+                    AppState {
+                        pool,
+                        changes,
+                        provider,
+                        keys: Keys::new(String::from(JWT_SECRET).as_bytes()),
+                    },
+                ),
             )
             .await
             .unwrap();
