@@ -25,6 +25,13 @@ mod model;
 mod routes;
 mod utils;
 
+const ALLOWED_ORIGINS: &[&str] = &[
+    "http://localhost:5173",                          // local development
+    "https://macaw-resolved-arguably.ngrok-free.app", // ngrok
+    "https://gentle-flea-officially.ngrok-free.app",  // ngrok
+    "https://view.art",                               // production
+];
+
 #[derive(Clone)]
 struct AppState {
     pool: Pool<RedisConnectionManager>,
@@ -68,13 +75,22 @@ async fn main() -> Result<()> {
 
     let changes = Changes::new();
 
+    let allowed_origins: Vec<HeaderValue> = ALLOWED_ORIGINS
+        .iter()
+        .map(|origin| origin.parse::<HeaderValue>().unwrap())
+        .chain(args.allowed_origins.unwrap_or_default())
+        .collect::<Vec<_>>();
+
     // build our application
-    let app = app(AppState {
-        pool,
-        changes,
-        provider,
-        keys,
-    });
+    let app = app(
+        allowed_origins,
+        AppState {
+            pool,
+            changes,
+            provider,
+            keys,
+        },
+    );
 
     // run it
     let listener =
@@ -89,7 +105,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn app(state: AppState) -> Router {
+fn app(allowed_origins: Vec<HeaderValue>, state: AppState) -> Router {
     let keys = state.keys.clone();
     // build our application with a route
     Router::new().nest(
@@ -114,16 +130,7 @@ fn app(state: AppState) -> Router {
             .layer(Extension(keys))
             .layer(
                 CorsLayer::new()
-                    .allow_origin([
-                        "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-                        "https://macaw-resolved-arguably.ngrok-free.app"
-                            .parse::<HeaderValue>()
-                            .unwrap(),
-                        "https://gentle-flea-officially.ngrok-free.app"
-                            .parse::<HeaderValue>()
-                            .unwrap(),
-                        "https://view.art".parse::<HeaderValue>().unwrap(),
-                    ])
+                    .allow_origin(allowed_origins)
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                     .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
             )
