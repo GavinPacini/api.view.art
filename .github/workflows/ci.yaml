@@ -16,6 +16,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          cache-targets: false
       - run: cargo clippy --workspace --all-targets --all-features
         env:
           RUSTFLAGS: -Dwarnings
@@ -38,6 +39,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          cache-targets: false
       - uses: yu-ichiro/spin-up-docker-compose-action@v1
         with:
           file: docker-compose.yaml
