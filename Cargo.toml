@@ -45,6 +45,7 @@ jsonwebtoken = "8.0"
 
 # crypto
 alloy = { version = "0.3", features = ["full"] }
+ethers = { version = "2.0", features = ["rustls"] }
 siwe = { version = "0.6", features = ["serde"] }
 erc6492 = { git = "https://github.com/devanoneth/erc6492" }
 

@@ -3,6 +3,7 @@ use {
     alloy::primitives::{Address, Bytes},
     bb8_redis::redis::{FromRedisValue, RedisError, RedisResult, Value},
     chrono::{DateTime, Utc},
+    ethers::types::Address,
     serde::{Deserialize, Serialize},
     siwe::Message,
     url::Url,
