@@ -1,5 +1,5 @@
 use {
-    crate::{model::ADDRESS_KEY, AppState},
+    crate::{utils::keys::address_key, AppState},
     alloy::primitives::Address,
     axum::{
         extract::{Path, State},
@@ -16,7 +16,7 @@ pub async fn get_channels(
 ) -> impl IntoResponse {
     tracing::info!("get channels for address {}", address);
 
-    let key = format!("{}:{}", ADDRESS_KEY, address);
+    let key = address_key(&address);
 
     let channels: Vec<String> = match state.pool.get().await {
         Ok(mut conn) => match conn.smembers::<&str, Vec<String>>(&key).await {
