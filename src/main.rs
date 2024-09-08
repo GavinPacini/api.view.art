@@ -168,6 +168,7 @@ mod tests {
         siwe::Message,
         tokio::net::TcpListener,
         url::Url,
+        utils::keys::nonce_key,
     };
 
     const REDIS_URL: &str = "redis://localhost:6379";
@@ -510,13 +511,16 @@ Issued At: {}"#,
 
         // Now we test with a smart contract wallet
         {
+            let nonce_key = nonce_key(
+                &"0x3635a25d6c9b69c517aaeb17a9a30468202563fe"
+                    .parse()
+                    .unwrap(),
+                8453,
+            );
             let mut conn = pool.get().await.unwrap();
-            conn.set::<&str, String, ()>(
-                "nonce:0x3635a25d6c9b69c517aaeb17a9a30468202563fe:8453",
-                "EbyKsNBvyN3Kg6sMR".to_string(),
-            )
-            .await
-            .unwrap();
+            conn.set::<&str, String, ()>(&nonce_key, "EbyKsNBvyN3Kg6sMR".to_string())
+                .await
+                .unwrap();
         }
 
         let body = r#"{
