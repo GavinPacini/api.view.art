@@ -7,6 +7,8 @@ use {
     redis::{AsyncCommands, RedisError},
 };
 
+/// Migrates piecemeal the address key from the old format to the new format
+/// Merges any existing channels for the address
 pub async fn migrate_addresses<'a>(
     address: &'a Address,
     conn: Result<PooledConnection<'a, RedisConnectionManager>, RunError<RedisError>>,
@@ -19,8 +21,14 @@ pub async fn migrate_addresses<'a>(
             Ok(exists) => {
                 if exists {
                     tracing::info!("migrating address key from {} to {}", old_key, new_key);
-                    match conn.rename::<&str, &str, ()>(&old_key, &new_key).await {
-                        Ok(_) => Ok(()),
+                    match conn
+                        .sunionstore::<&str, &[&str], ()>(&new_key, &[&old_key, &new_key])
+                        .await
+                    {
+                        Ok(_) => {
+                            tracing::info!("migrated address key from {} to {}", old_key, new_key);
+                            Ok(())
+                        }
                         Err(err) => {
                             tracing::error!("Error migrating address key: {:?}", err);
                             Err(anyhow!(err))

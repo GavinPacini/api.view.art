@@ -164,11 +164,11 @@ mod tests {
         futures::StreamExt,
         model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Played, VerifyAuth},
         routes::auth::tests::get_team_api_key,
-        serde_json::Value,
+        serde_json::{json, Value},
         siwe::Message,
         tokio::net::TcpListener,
         url::Url,
-        utils::keys::nonce_key,
+        utils::keys::{nonce_key, old_address_key},
     };
 
     const REDIS_URL: &str = "redis://localhost:6379";
@@ -521,6 +521,15 @@ Issued At: {}"#,
             conn.set::<&str, String, ()>(&nonce_key, "EbyKsNBvyN3Kg6sMR".to_string())
                 .await
                 .unwrap();
+
+            let address_key = old_address_key(
+                &"0x3635a25d6c9b69c517aaeb17a9a30468202563fe"
+                    .parse()
+                    .unwrap(),
+            );
+            conn.sadd::<&str, &str, ()>(&address_key, "test-migration")
+                .await
+                .unwrap();
         }
 
         let body = r#"{
@@ -570,5 +579,57 @@ Issued At: {}"#,
             .unwrap();
 
         assert!(result.status().is_success());
+
+        // Now we check that the address key was migrated
+        let result = reqwest::Client::new()
+            .post(format!("{}/v1/channel/test-migration", listening_url))
+            .header("User-Agent", "integration_test")
+            .header("Authorization", format!("Bearer {}", authorization))
+            .json(&ChannelContent {
+                items: vec![Item {
+                    id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
+                        .parse::<AssetId>()
+                        .unwrap(),
+                    title: "test".to_string(),
+                    artist: Some("test".to_string()),
+                    url: Url::parse("https://test.com").unwrap(),
+                    thumbnail_url: Url::parse("https://test.com").unwrap(),
+                    apply_matte: false,
+                    activate_by: "".to_string(),
+                }],
+                played: Played {
+                    item: 0,
+                    at: Utc::now(),
+                },
+            })
+            .send()
+            .await
+            .unwrap();
+
+        assert!(result.status().is_success());
+
+        let channels = reqwest::Client::new()
+            .get(format!(
+                "{}/v1/wallet/0x3635a25d6c9b69c517aaeb17a9a30468202563fe/channels",
+                listening_url
+            ))
+            .header("User-Agent", "integration_test")
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+
+        // test-wallet and test-migration should be merged
+        assert_eq!(channels["channels"].as_array().unwrap().len(), 2);
+        assert!(channels["channels"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("test-wallet")));
+        assert!(channels["channels"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("test-migration")));
     }
 }
