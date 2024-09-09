@@ -21,11 +21,9 @@ pub async fn get_channels(
 ) -> impl IntoResponse {
     tracing::info!("get channels for address {}", address);
 
-    match migrate_addresses(&address, state.pool.get().await).await {
-        Ok(_) => (),
-        Err(e) => {
-            return internal_error(anyhow!(e));
-        }
+    if let Err(err) = migrate_addresses(&address, state.pool.get().await).await {
+        tracing::error!("Error migrating address key: {:?}", err);
+        return internal_error(anyhow!(err));
     }
 
     let key = address_key(&address);

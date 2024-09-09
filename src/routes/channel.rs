@@ -192,12 +192,9 @@ pub async fn set_channel(
         );
     }
 
-    match migrate_addresses(&claims.address, state.pool.get().await).await {
-        Ok(_) => (),
-        Err(e) => {
-            tracing::error!("Error migrating address key: {:?}", e);
-            return internal_error(anyhow!(e));
-        }
+    if let Err(err) = migrate_addresses(&claims.address, state.pool.get().await).await {
+        tracing::error!("Error migrating address key: {:?}", err);
+        return internal_error(anyhow!(err));
     }
 
     // check if the user is an admin or the channel is owned by the user
