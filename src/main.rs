@@ -511,6 +511,7 @@ Issued At: {}"#,
 
         // Now we test with a smart contract wallet
         {
+            // Set the nonce for the wallet so that the stored signature is valid
             let nonce_key = nonce_key(
                 &"0x3635a25d6c9b69c517aaeb17a9a30468202563fe"
                     .parse()
@@ -522,6 +523,8 @@ Issued At: {}"#,
                 .await
                 .unwrap();
 
+            // Set an old format address key for the wallet so that the migration flow
+            // occurs
             let address_key = old_address_key(
                 &"0x3635a25d6c9b69c517aaeb17a9a30468202563fe"
                     .parse()
@@ -581,33 +584,6 @@ Issued At: {}"#,
         assert!(result.status().is_success());
 
         // Now we check that the address key was migrated
-        let result = reqwest::Client::new()
-            .post(format!("{}/v1/channel/test-migration", listening_url))
-            .header("User-Agent", "integration_test")
-            .header("Authorization", format!("Bearer {}", authorization))
-            .json(&ChannelContent {
-                items: vec![Item {
-                    id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
-                        .parse::<AssetId>()
-                        .unwrap(),
-                    title: "test".to_string(),
-                    artist: Some("test".to_string()),
-                    url: Url::parse("https://test.com").unwrap(),
-                    thumbnail_url: Url::parse("https://test.com").unwrap(),
-                    apply_matte: false,
-                    activate_by: "".to_string(),
-                }],
-                played: Played {
-                    item: 0,
-                    at: Utc::now(),
-                },
-            })
-            .send()
-            .await
-            .unwrap();
-
-        assert!(result.status().is_success());
-
         let channels = reqwest::Client::new()
             .get(format!(
                 "{}/v1/wallet/0x3635a25d6c9b69c517aaeb17a9a30468202563fe/channels",

@@ -26,6 +26,14 @@ pub async fn migrate_addresses<'a>(
                         .await
                     {
                         Ok(_) => {
+                            match conn.del::<&str, ()>(&old_key).await {
+                                Ok(_) => {
+                                    tracing::info!("deleted old address key {}", old_key);
+                                }
+                                Err(err) => {
+                                    tracing::error!("Error deleting old address key: {:?}", err);
+                                }
+                            }
                             tracing::info!("migrated address key from {} to {}", old_key, new_key);
                             Ok(())
                         }
