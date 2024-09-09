@@ -164,10 +164,11 @@ mod tests {
         futures::StreamExt,
         model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Played, VerifyAuth},
         routes::auth::tests::get_team_api_key,
-        serde_json::Value,
+        serde_json::{json, Value},
         siwe::Message,
         tokio::net::TcpListener,
         url::Url,
+        utils::keys::{nonce_key, old_address_key},
     };
 
     const REDIS_URL: &str = "redis://localhost:6379";
@@ -227,7 +228,7 @@ mod tests {
         let (listening_url, pool) = spawn_app("127.0.0.1").await;
 
         let mut event_stream = reqwest::Client::new()
-            .get(&format!("{}/v1/channel/test", listening_url))
+            .get(format!("{}/v1/channel/test", listening_url))
             .header("User-Agent", "integration_test")
             .send()
             .await
@@ -252,7 +253,7 @@ mod tests {
 
                             // check if channel is taken
                             let result = reqwest::Client::new()
-                                .get(&format!("{}/v1/channel/test/taken", listening_url))
+                                .get(format!("{}/v1/channel/test/taken", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .send()
                                 .await
@@ -265,7 +266,7 @@ mod tests {
 
                             // setting the channel without the team API key should fail
                             let result = reqwest::Client::new()
-                                .post(&format!("{}/v1/channel/test", listening_url))
+                                .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .json(&ChannelContent {
                                     items: vec![Item {
@@ -289,7 +290,7 @@ mod tests {
 
                             // set channel to 1 using the team API key
                             reqwest::Client::new()
-                                .post(&format!("{}/v1/channel/test", listening_url))
+                                .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&ChannelContent {
@@ -320,7 +321,7 @@ mod tests {
 
                             // check if channel is taken
                             let result = reqwest::Client::new()
-                                .get(&format!("{}/v1/channel/test/taken", listening_url))
+                                .get(format!("{}/v1/channel/test/taken", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .send()
                                 .await
@@ -333,7 +334,7 @@ mod tests {
 
                             // check if channel is in list of channels for address
                             let result = reqwest::Client::new()
-                                .get(&format!(
+                                .get(format!(
                                     "{}/v1/wallet/{:#?}/channels",
                                     listening_url,
                                     alloy::primitives::Address::ZERO
@@ -352,7 +353,7 @@ mod tests {
 
                             // set played item to 1
                             reqwest::Client::new()
-                                .post(&format!("{}/v1/channel/test", listening_url))
+                                .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
                                 .json(&ChannelContent {
@@ -400,7 +401,7 @@ mod tests {
         let signer = PrivateKeySigner::random();
 
         let nonce = reqwest::Client::new()
-            .post(&format!("{}/v1/nonce", listening_url))
+            .post(format!("{}/v1/nonce", listening_url))
             .header("User-Agent", "integration_test")
             .json(&GetAuth {
                 address: signer.address(),
@@ -441,7 +442,7 @@ Issued At: {}"#,
             .into();
 
         let authorization = reqwest::Client::new()
-            .post(&format!("{}/v1/auth", listening_url))
+            .post(format!("{}/v1/auth", listening_url))
             .header("User-Agent", "integration_test")
             .json(&VerifyAuth { message, signature })
             .send()
@@ -455,7 +456,7 @@ Issued At: {}"#,
             .to_string();
 
         let result = reqwest::Client::new()
-            .post(&format!("{}/v1/channel/test", listening_url))
+            .post(format!("{}/v1/channel/test", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
             .json(&ChannelContent {
@@ -482,7 +483,7 @@ Issued At: {}"#,
         assert!(result.status().is_client_error());
 
         let result = reqwest::Client::new()
-            .post(&format!("{}/v1/channel/test-user", listening_url))
+            .post(format!("{}/v1/channel/test-user", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
             .json(&ChannelContent {
@@ -510,13 +511,28 @@ Issued At: {}"#,
 
         // Now we test with a smart contract wallet
         {
+            // Set the nonce for the wallet so that the stored signature is valid
+            let nonce_key = nonce_key(
+                &"0x3635a25d6c9b69c517aaeb17a9a30468202563fe"
+                    .parse()
+                    .unwrap(),
+                8453,
+            );
             let mut conn = pool.get().await.unwrap();
-            conn.set::<&str, String, ()>(
-                "nonce:0x3635a25d6c9b69c517aaeb17a9a30468202563fe:8453",
-                "EbyKsNBvyN3Kg6sMR".to_string(),
-            )
-            .await
-            .unwrap();
+            conn.set::<&str, String, ()>(&nonce_key, "EbyKsNBvyN3Kg6sMR".to_string())
+                .await
+                .unwrap();
+
+            // Set an old format address key for the wallet so that the migration flow
+            // occurs
+            let address_key = old_address_key(
+                &"0x3635a25d6c9b69c517aaeb17a9a30468202563fe"
+                    .parse()
+                    .unwrap(),
+            );
+            conn.sadd::<&str, &str, ()>(&address_key, "test-migration")
+                .await
+                .unwrap();
         }
 
         let body = r#"{
@@ -527,7 +543,7 @@ Issued At: {}"#,
         let verify_auth: VerifyAuth = serde_json::from_str(body).unwrap();
 
         let authorization = reqwest::Client::new()
-            .post(&format!("{}/v1/auth", listening_url))
+            .post(format!("{}/v1/auth", listening_url))
             .header("User-Agent", "integration_test")
             .json(&verify_auth)
             .send()
@@ -541,7 +557,7 @@ Issued At: {}"#,
             .to_string();
 
         let result = reqwest::Client::new()
-            .post(&format!("{}/v1/channel/test-wallet", listening_url))
+            .post(format!("{}/v1/channel/test-wallet", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
             .json(&ChannelContent {
@@ -566,5 +582,30 @@ Issued At: {}"#,
             .unwrap();
 
         assert!(result.status().is_success());
+
+        // Now we check that the address key was migrated
+        let channels = reqwest::Client::new()
+            .get(format!(
+                "{}/v1/wallet/0x3635a25d6c9b69c517aaeb17a9a30468202563fe/channels",
+                listening_url
+            ))
+            .header("User-Agent", "integration_test")
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+
+        // test-wallet and test-migration should be merged
+        assert_eq!(channels["channels"].as_array().unwrap().len(), 2);
+        assert!(channels["channels"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("test-wallet")));
+        assert!(channels["channels"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("test-migration")));
     }
 }

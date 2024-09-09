@@ -1,8 +1,12 @@
 use {
     super::auth::Claims,
     crate::{
-        model::{ChannelContent, EmptyChannelContent, ADDRESS_KEY, CHANNEL_KEY},
+        model::{ChannelContent, EmptyChannelContent},
         routes::internal_error,
+        utils::{
+            address_migration::migrate_addresses,
+            keys::{address_key, channel_key},
+        },
         AppState,
     },
     anyhow::{anyhow, Result},
@@ -30,7 +34,7 @@ pub async fn get_channel(
 
     tracing::info!("get content for channel {}", channel);
 
-    let key = format!("{}:{}", CHANNEL_KEY, channel);
+    let key = channel_key(&channel);
 
     // get content from DB if set
     let initial_content: Option<ChannelContent> = {
@@ -100,7 +104,7 @@ pub async fn is_taken(state: State<AppState>, Path(channel): Path<String>) -> im
 
     tracing::info!("check if channel {} is taken", channel);
 
-    let key = format!("{}:{}", CHANNEL_KEY, channel);
+    let key = channel_key(&channel);
 
     let exists: bool = match state.pool.get().await {
         Ok(mut conn) => match conn.exists::<&str, bool>(&key).await {
@@ -124,7 +128,7 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     tracing::info!("get summary for channel {}", channel);
 
-    let key = format!("{}:{}", CHANNEL_KEY, channel);
+    let key = channel_key(&channel);
 
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
@@ -188,8 +192,13 @@ pub async fn set_channel(
         );
     }
 
+    if let Err(err) = migrate_addresses(&claims.address, state.pool.get().await).await {
+        tracing::error!("Error migrating address key: {:?}", err);
+        return internal_error(anyhow!(err));
+    }
+
     // check if the user is an admin or the channel is owned by the user
-    let address_key = format!("{}:{}", ADDRESS_KEY, claims.address);
+    let address_key = address_key(&claims.address);
     let owned: bool = if claims.address.is_zero() {
         // TODO: currently admin can set any channel, investigate if we want this or not
         // if admin, always set owned to true
@@ -214,7 +223,7 @@ pub async fn set_channel(
     };
 
     // check if channel already exists
-    let channel_key = format!("{}:{}", CHANNEL_KEY, channel);
+    let channel_key = channel_key(&channel);
     let exists: bool = match state.pool.get().await {
         Ok(mut conn) => match conn.exists::<&str, bool>(&channel_key).await {
             Ok(exists) => exists,

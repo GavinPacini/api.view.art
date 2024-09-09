@@ -2,6 +2,7 @@ use {
     crate::{
         model::{GetAuth, VerifyAuth},
         routes::internal_error,
+        utils::keys::nonce_key,
         AppState,
     },
     alloy::primitives::Address,
@@ -37,7 +38,7 @@ pub async fn get_nonce(
 ) -> impl IntoResponse {
     tracing::info!("getting nonce for {:?}", address);
 
-    let nonce_key = format!("nonce:{:?}:{}", address, chain_id);
+    let nonce_key = nonce_key(&address, chain_id);
 
     match state.pool.get().await {
         Ok(mut conn) => match conn
@@ -57,7 +58,7 @@ pub async fn get_nonce(
 
                 match conn
                     .set_options::<&str, String, ()>(
-                        &format!("nonce:{:?}:{}", address, chain_id),
+                        &nonce_key,
                         random_nonce.clone(),
                         SetOptions::default().with_expiration(SetExpiry::EX(NONCE_EXPIRY)),
                     )
@@ -90,7 +91,7 @@ pub async fn verify_auth(
 
     tracing::info!("verifying auth for {:?}", address);
 
-    let nonce_key = format!("nonce:{:?}:{}", address, chain_id);
+    let nonce_key = nonce_key(&address, chain_id);
 
     match state.pool.get().await {
         Ok(mut conn) => match conn.get::<&str, String>(&nonce_key).await {
