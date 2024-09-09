@@ -4,6 +4,11 @@ pub const ADDRESS_KEY: &str = "address";
 pub const CHANNEL_KEY: &str = "channel";
 pub const NONCE_KEY: &str = "nonce";
 
+/// Returns an ethers style address key, no longer used in the DB
+pub fn old_address_key(address: &Address) -> String {
+    format!("{}:{:#}", ADDRESS_KEY, address).to_lowercase()
+}
+
 pub fn address_key(address: &Address) -> String {
     format!("{}:{}", ADDRESS_KEY, address)
 }
@@ -19,6 +24,23 @@ pub fn nonce_key(address: &Address, chain_id: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_old_address_key() {
+        let key = old_address_key(
+            &"0x3635a25d6c9b69c517aaeb17a9a30468202563fe"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(key, "address:0x3635…63fe");
+
+        let key = old_address_key(
+            &"0x3635a25d6c9b69C517AAeB17A9a30468202563fE"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(key, "address:0x3635…63fe");
+    }
 
     #[test]
     fn test_address_key() {

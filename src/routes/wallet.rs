@@ -1,6 +1,11 @@
 use {
-    crate::{utils::keys::address_key, AppState},
+    crate::{
+        routes::internal_error,
+        utils::{address_migration::migrate_addresses, keys::address_key},
+        AppState,
+    },
     alloy::primitives::Address,
+    anyhow::anyhow,
     axum::{
         extract::{Path, State},
         http::StatusCode,
@@ -15,6 +20,13 @@ pub async fn get_channels(
     Path(address): Path<Address>,
 ) -> impl IntoResponse {
     tracing::info!("get channels for address {}", address);
+
+    match migrate_addresses(&address, state.pool.get().await).await {
+        Ok(_) => (),
+        Err(e) => {
+            return internal_error(anyhow!(e));
+        }
+    }
 
     let key = address_key(&address);
 

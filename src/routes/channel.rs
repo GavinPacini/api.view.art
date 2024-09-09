@@ -3,7 +3,10 @@ use {
     crate::{
         model::{ChannelContent, EmptyChannelContent},
         routes::internal_error,
-        utils::keys::{address_key, channel_key},
+        utils::{
+            address_migration::migrate_addresses,
+            keys::{address_key, channel_key},
+        },
         AppState,
     },
     anyhow::{anyhow, Result},
@@ -187,6 +190,14 @@ pub async fn set_channel(
             json!({ "status": false, "error": "invalid channel name, must be ascii alphabetic" })
                 .to_string(),
         );
+    }
+
+    match migrate_addresses(&claims.address, state.pool.get().await).await {
+        Ok(_) => (),
+        Err(e) => {
+            tracing::error!("Error migrating address key: {:?}", e);
+            return internal_error(anyhow!(e));
+        }
     }
 
     // check if the user is an admin or the channel is owned by the user
