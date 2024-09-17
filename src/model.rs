@@ -48,6 +48,18 @@ pub struct ChannelContent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Played {
+    pub item: u32,
+    pub at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OldChannelContent {
+    pub items: Vec<Item>,
+    pub played: Played,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmptyChannelContent {
     pub empty: bool,
 }

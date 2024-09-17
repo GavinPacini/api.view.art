@@ -132,8 +132,36 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
-            Ok(mut conn) => match conn.get(&key).await {
-                Ok(content) => Some(content),
+            Ok(mut conn) => match conn.get::<String>(&key).await {
+                Ok(content) => {
+                    // Try to deserialize to the new format
+                    match serde_json::from_str::<ChannelContent>(&content) {
+                        Ok(new_content) => Some(new_content),
+                        Err(_) => {
+                            // If deserialization fails, try to deserialize to the old format
+                            match serde_json::from_str::<OldChannelContent>(&content) {
+                                Ok(old_content) => {
+                                    // Convert the old content to the new format
+                                    Some(ChannelContent {
+                                        items: old_content.items,
+                                        status: Status {
+                                            item: old_content.played.item,
+                                            at: old_content.played.at,
+                                            action: "played".to_string(), // Default action based on old format
+                                        },
+                                    })
+                                }
+                                Err(err) => {
+                                    tracing::error!(
+                                        "Error deserializing content for channel {}: {:?}",
+                                        channel, err
+                                    );
+                                    None
+                                }
+                            }
+                        }
+                    }
+                }
                 Err(err) => {
                     tracing::error!("Error getting content for channel {}: {:?}", channel, err);
                     None
@@ -148,16 +176,17 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     match initial_content {
         Some(content) => {
-            // make summary a default json object
+            // Make summary a default JSON object
             let mut summary = json!({});
 
-            // add items to summary
+            // Add items to summary
             summary["items"] = json!(content.items.len());
 
-            // add thumbnail to summary
+            // Add thumbnail to summary
             if let Some(thumbnail) = content.items.first().map(|item| item.thumbnail_url.clone()) {
                 summary["thumbnail"] = json!(thumbnail);
             }
+
             (StatusCode::OK, json!(summary).to_string())
         }
         None => (
