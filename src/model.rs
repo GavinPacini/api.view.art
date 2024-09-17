@@ -31,18 +31,20 @@ pub struct Item {
     pub thumbnail_url: Url,
     pub apply_matte: bool,
     pub activate_by: String,
+    pub predominant_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Played {
+pub struct Status {
     pub item: u32,
     pub at: DateTime<Utc>,
+    pub action: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelContent {
     pub items: Vec<Item>,
-    pub played: Played,
+    pub status: Status,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

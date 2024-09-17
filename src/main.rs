@@ -162,7 +162,7 @@ mod tests {
         chrono::{SecondsFormat, Utc},
         eventsource_stream::Eventsource,
         futures::StreamExt,
-        model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Played, VerifyAuth},
+        model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Status, VerifyAuth},
         routes::auth::tests::get_team_api_key,
         serde_json::{json, Value},
         siwe::Message,
@@ -277,10 +277,12 @@ mod tests {
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
                                         activate_by: "".to_string(),
+                                        predominant_color: None,
                                     }],
-                                    played: Played {
+                                    status: Status {
                                         item: 0,
                                         at: Utc::now(),
+                                        action: "played".to_string(),
                                     },
                                 })
                                 .send()
@@ -302,10 +304,12 @@ mod tests {
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
                                         activate_by: "".to_string(),
+                                        predominant_color: None,
                                     }],
-                                    played: Played {
+                                    status: Status {
                                         item: 0,
                                         at: Utc::now(),
+                                        action: "played".to_string(),
                                     },
                                 })
                                 .send()
@@ -317,7 +321,8 @@ mod tests {
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
                             assert!(content.items.len() == 1);
                             assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
-                            assert!(content.played.item == 0);
+                            assert!(content.status.item == 0);
+                            assert!(content.status.action == "played");
 
                             // check if channel is taken
                             let result = reqwest::Client::new()
@@ -365,10 +370,12 @@ mod tests {
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
                                         activate_by: "".to_string(),
+                                        predominant_color: None,
                                     }],
-                                    played: Played {
+                                    status: Status {
                                         item: 1,
                                         at: Utc::now(),
+                                        action: "played".to_string(),
                                     },
                                 })
                                 .send()
@@ -380,7 +387,8 @@ mod tests {
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
                             assert!(content.items.len() == 1);
                             assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
-                            assert!(content.played.item == 1);
+                            assert!(content.status.item == 1);
+                            assert!(content.status.action == "played");
                         }
                         _ => {
                             panic!("Unexpected event");
@@ -470,10 +478,12 @@ Issued At: {}"#,
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
                     apply_matte: false,
                     activate_by: "".to_string(),
+                    predominant_color: None,
                 }],
-                played: Played {
+                status: Status {
                     item: 0,
                     at: Utc::now(),
+                    action: "played".to_string(),
                 },
             })
             .send()
@@ -497,10 +507,12 @@ Issued At: {}"#,
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
                     apply_matte: false,
                     activate_by: "".to_string(),
+                    predominant_color: None,
                 }],
-                played: Played {
+                status: Status {
                     item: 0,
                     at: Utc::now(),
+                    action: "played".to_string(),
                 },
             })
             .send()
@@ -571,10 +583,12 @@ Issued At: {}"#,
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
                     apply_matte: false,
                     activate_by: "".to_string(),
+                    predominant_color: None,
                 }],
-                played: Played {
+                status: Status {
                     item: 0,
                     at: Utc::now(),
+                    action: "played".to_string(),
                 },
             })
             .send()
