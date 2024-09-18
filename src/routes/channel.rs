@@ -1,7 +1,7 @@
 use {
     super::auth::Claims,
     crate::{
-        model::{ChannelContent, EmptyChannelContent},
+        model::{ChannelContent, OldChannelContent, EmptyChannelContent, Status},
         routes::internal_error,
         utils::{
             address_migration::migrate_addresses,
@@ -132,7 +132,7 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
-            Ok(mut conn) => match conn.get::<String>(&key).await {
+            Ok(mut conn) => match conn.get::<&str, String>(key.as_str()).await {
                 Ok(content) => {
                     // Try to deserialize to the new format
                     match serde_json::from_str::<ChannelContent>(&content) {
