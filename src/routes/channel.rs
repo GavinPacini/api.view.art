@@ -26,6 +26,31 @@ use {
     tokio_stream::wrappers::BroadcastStream,
 };
 
+// Centralized deserialization function to handle both old and new formats
+pub fn deserialize_channel_content(content: &str) -> Result<ChannelContent> {
+    // Try to deserialize to the new format
+    match serde_json::from_str::<ChannelContent>(content) {
+        Ok(new_content) => Ok(new_content),
+        Err(_) => {
+            // If deserialization fails, try to deserialize to the old format
+            match serde_json::from_str::<OldChannelContent>(content) {
+                Ok(old_content) => {
+                    // Convert the old content to the new format
+                    Ok(ChannelContent {
+                        items: old_content.items,
+                        status: Status {
+                            item: old_content.played.item,
+                            at: old_content.played.at,
+                            action: "played".to_string(), // Default action for old format
+                        },
+                    })
+                }
+                Err(err) => Err(anyhow!("Failed to deserialize content: {:?}", err)),
+            }
+        }
+    }
+}
+
 pub async fn get_channel(
     state: State<AppState>,
     Path(channel): Path<String>,
@@ -39,8 +64,18 @@ pub async fn get_channel(
     // get content from DB if set
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
-            Ok(mut conn) => match conn.get(&key).await {
-                Ok(content) => Some(content),
+            Ok(mut conn) => match conn.get::<&str, String>(key.as_str()).await {
+                Ok(content) => match deserialize_channel_content(&content) {
+                    Ok(content) => Some(content),
+                    Err(err) => {
+                        tracing::error!(
+                            "Error deserializing content for channel {}: {:?}",
+                            channel,
+                            err
+                        );
+                        None
+                    }
+                },
                 Err(err) => {
                     tracing::error!("Error getting content for channel {}: {:?}", channel, err);
                     None
@@ -133,37 +168,17 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
             Ok(mut conn) => match conn.get::<&str, String>(key.as_str()).await {
-                Ok(content) => {
-                    // Try to deserialize to the new format
-                    match serde_json::from_str::<ChannelContent>(&content) {
-                        Ok(new_content) => Some(new_content),
-                        Err(_) => {
-                            // If deserialization fails, try to deserialize to the old format
-                            match serde_json::from_str::<OldChannelContent>(&content) {
-                                Ok(old_content) => {
-                                    // Convert the old content to the new format
-                                    Some(ChannelContent {
-                                        items: old_content.items,
-                                        status: Status {
-                                            item: old_content.played.item,
-                                            at: old_content.played.at,
-                                            action: "played".to_string(), /* Default action based
-                                                                           * on old format */
-                                        },
-                                    })
-                                }
-                                Err(err) => {
-                                    tracing::error!(
-                                        "Error deserializing content for channel {}: {:?}",
-                                        channel,
-                                        err
-                                    );
-                                    None
-                                }
-                            }
-                        }
+                Ok(content) => match deserialize_channel_content(&content) {
+                    Ok(content) => Some(content),
+                    Err(err) => {
+                        tracing::error!(
+                            "Error deserializing content for channel {}: {:?}",
+                            channel,
+                            err
+                        );
+                        None
                     }
-                }
+                },
                 Err(err) => {
                     tracing::error!("Error getting content for channel {}: {:?}", channel, err);
                     None
@@ -232,8 +247,7 @@ pub async fn set_channel(
     let address_key = address_key(&claims.address);
     let owned: bool = if claims.address.is_zero() {
         // TODO: currently admin can set any channel, investigate if we want this or not
-        // if admin, always set owned to true
-        true
+        true // if admin, always set owned to true
     } else {
         match state.pool.get().await {
             Ok(mut conn) => match conn
@@ -289,7 +303,7 @@ pub async fn set_channel(
             Ok(_) => match conn
                 .set::<&str, String, ()>(
                     &channel_key,
-                    serde_json::to_string(&channel_content).unwrap(),
+                    serde_json::to_string(&channel_content).unwrap(), // Always write new format
                 )
                 .await
             {
