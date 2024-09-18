@@ -1,7 +1,7 @@
 use {
     super::auth::Claims,
     crate::{
-        model::{ChannelContent, OldChannelContent, EmptyChannelContent, Status},
+        model::{ChannelContent, EmptyChannelContent, OldChannelContent, Status},
         routes::internal_error,
         utils::{
             address_migration::migrate_addresses,
@@ -147,14 +147,16 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
                                         status: Status {
                                             item: old_content.played.item,
                                             at: old_content.played.at,
-                                            action: "played".to_string(), // Default action based on old format
+                                            action: "played".to_string(), /* Default action based
+                                                                           * on old format */
                                         },
                                     })
                                 }
                                 Err(err) => {
                                     tracing::error!(
                                         "Error deserializing content for channel {}: {:?}",
-                                        channel, err
+                                        channel,
+                                        err
                                     );
                                     None
                                 }
