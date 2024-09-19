@@ -38,6 +38,7 @@ pub fn deserialize_channel_content(content: &str) -> Result<ChannelContent> {
                     // Convert the old content to the new format
                     Ok(ChannelContent {
                         items: old_content.items,
+                        item_duration: 60,
                         status: Status {
                             item: old_content.played.item,
                             at: old_content.played.at,

@@ -35,6 +35,20 @@ pub struct Item {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelContent {
+    pub items: Vec<Item>,
+    #[serde(default = "default_item_duration")]
+    pub item_duration: u32,
+    pub status: Status,
+}
+
+// Function to provide the default value
+fn default_item_duration() -> u32 {
+    60
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
     pub item: u32,
     pub at: DateTime<Utc>,
@@ -42,21 +56,15 @@ pub struct Status {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelContent {
+pub struct OldChannelContent {
     pub items: Vec<Item>,
-    pub status: Status,
+    pub played: Played,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Played {
     pub item: u32,
     pub at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OldChannelContent {
-    pub items: Vec<Item>,
-    pub played: Played,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -279,6 +279,7 @@ mod tests {
                                         activate_by: "".to_string(),
                                         predominant_color: None,
                                     }],
+                                    item_duration: 60,
                                     status: Status {
                                         item: 0,
                                         at: Utc::now(),
@@ -306,6 +307,7 @@ mod tests {
                                         activate_by: "".to_string(),
                                         predominant_color: None,
                                     }],
+                                    item_duration: 60,
                                     status: Status {
                                         item: 0,
                                         at: Utc::now(),
@@ -372,6 +374,7 @@ mod tests {
                                         activate_by: "".to_string(),
                                         predominant_color: None,
                                     }],
+                                    item_duration: 60,
                                     status: Status {
                                         item: 1,
                                         at: Utc::now(),
@@ -387,6 +390,7 @@ mod tests {
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
                             assert!(content.items.len() == 1);
                             assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
+                            assert!(content.item_duration == 60);
                             assert!(content.status.item == 1);
                             assert!(content.status.action == "played");
                         }
@@ -480,6 +484,7 @@ Issued At: {}"#,
                     activate_by: "".to_string(),
                     predominant_color: None,
                 }],
+                item_duration: 60,
                 status: Status {
                     item: 0,
                     at: Utc::now(),
@@ -509,6 +514,7 @@ Issued At: {}"#,
                     activate_by: "".to_string(),
                     predominant_color: None,
                 }],
+                item_duration: 60,
                 status: Status {
                     item: 0,
                     at: Utc::now(),
@@ -585,6 +591,7 @@ Issued At: {}"#,
                     activate_by: "".to_string(),
                     predominant_color: None,
                 }],
+                item_duration: 60,
                 status: Status {
                     item: 0,
                     at: Utc::now(),
