@@ -63,10 +63,14 @@ pub async fn get_channel(
     let stream = BroadcastStream::new(rx).map(|content| {
         let event = match content {
             Ok(content) => match content {
-                Some(content) => Event::default()
-                    .json_data(content)
-                    .unwrap()
-                    .event("content"),
+                Some(content) => {
+                    // map to v2
+                    let content_v2 = content.v2();
+                    Event::default()
+                        .json_data(content_v2)
+                        .unwrap()
+                        .event("content")
+                }
                 None => Event::default()
                     .json_data(EmptyChannelContent::default())
                     .unwrap()
@@ -81,8 +85,11 @@ pub async fn get_channel(
         Ok::<Event, Infallible>(event)
     });
 
+    // map channel content to v2
+    let initial_content_v2 = initial_content.map(|content| content.v2());
+
     // send initial content to subscribers
-    match tx.send(initial_content) {
+    match tx.send(initial_content_v2) {
         Ok(len) => {
             tracing::debug!("sent {} to {} receivers", channel, len);
         }
@@ -148,16 +155,20 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     match initial_content {
         Some(content) => {
-            // make summary a default json object
+            // Make summary a default JSON object
             let mut summary = json!({});
 
-            // add items to summary
-            summary["items"] = json!(content.items.len());
+            // Get items from content across all versions
+            let items = content.items();
 
-            // add thumbnail to summary
-            if let Some(thumbnail) = content.items.first().map(|item| item.thumbnail_url.clone()) {
+            // Add items to summary
+            summary["items"] = json!(items.len());
+
+            // Add thumbnail to summary
+            if let Some(thumbnail) = items.first().map(|item| item.thumbnail_url.clone()) {
                 summary["thumbnail"] = json!(thumbnail);
             }
+
             (StatusCode::OK, json!(summary).to_string())
         }
         None => (
@@ -201,8 +212,7 @@ pub async fn set_channel(
     let address_key = address_key(&claims.address);
     let owned: bool = if claims.address.is_zero() {
         // TODO: currently admin can set any channel, investigate if we want this or not
-        // if admin, always set owned to true
-        true
+        true // if admin, always set owned to true
     } else {
         match state.pool.get().await {
             Ok(mut conn) => match conn
@@ -258,7 +268,7 @@ pub async fn set_channel(
             Ok(_) => match conn
                 .set::<&str, String, ()>(
                     &channel_key,
-                    serde_json::to_string(&channel_content).unwrap(),
+                    serde_json::to_string(&channel_content).unwrap(), // Always write new format
                 )
                 .await
             {
@@ -291,14 +301,18 @@ pub async fn set_channel(
 fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
     // ensure all ids are unique in items
     let mut ids = HashSet::new();
-    for item in &channel_content.items {
+
+    // Get items from content across all versions
+    let items = channel_content.items();
+
+    for item in items {
         if ids.contains(&item.id) {
             return Err(anyhow!("duplicate item id: {}", item.id));
         }
         ids.insert(item.id.clone());
     }
 
-    for item in &channel_content.items {
+    for item in items {
         if item.title.is_empty() || item.title.len() > 100 {
             return Err(anyhow!(
                 "item title must be between 1 and 100 characters, for id {}",

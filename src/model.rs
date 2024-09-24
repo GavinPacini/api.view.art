@@ -31,7 +31,73 @@ pub struct Item {
     pub thumbnail_url: Url,
     pub apply_matte: bool,
     pub activate_by: String,
+    pub predominant_color: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename_all_fields = "camelCase")]
+pub enum ChannelContent {
+    ChannelContentV1 {
+        items: Vec<Item>,
+        played: Played,
+    },
+    ChannelContentV2 {
+        items: Vec<Item>,
+        #[serde(default = "default_item_duration")]
+        item_duration: u32,
+        status: Status,
+    },
+}
+
+impl ChannelContent {
+    pub fn items(&self) -> &Vec<Item> {
+        match self {
+            ChannelContent::ChannelContentV1 { items, .. } => items,
+            ChannelContent::ChannelContentV2 { items, .. } => items,
+        }
+    }
+
+    pub fn v2(self) -> ChannelContent {
+        match self {
+            ChannelContent::ChannelContentV1 { items, played } => {
+                ChannelContent::ChannelContentV2 {
+                    items,
+                    item_duration: default_item_duration(),
+                    status: Status {
+                        item: played.item,
+                        at: played.at,
+                        action: Action::Played,
+                    },
+                }
+            }
+            content @ ChannelContent::ChannelContentV2 { .. } => content,
+        }
+    }
+}
+
+// ChannelContentV2
+
+// Function to provide the default value
+fn default_item_duration() -> u32 {
+    60
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Status {
+    pub item: u32,
+    pub at: DateTime<Utc>,
+    pub action: Action,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Action {
+    Played,
+    Paused,
+}
+
+// ChannelContentV1
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Played {
@@ -39,11 +105,7 @@ pub struct Played {
     pub at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelContent {
-    pub items: Vec<Item>,
-    pub played: Played,
-}
+// EmptyChannelContent
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmptyChannelContent {

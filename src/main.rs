@@ -162,7 +162,7 @@ mod tests {
         chrono::{SecondsFormat, Utc},
         eventsource_stream::Eventsource,
         futures::StreamExt,
-        model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Played, VerifyAuth},
+        model::{Action, ChannelContent, EmptyChannelContent, GetAuth, Item, Status, VerifyAuth},
         routes::auth::tests::get_team_api_key,
         serde_json::{json, Value},
         siwe::Message,
@@ -268,7 +268,7 @@ mod tests {
                             let result = reqwest::Client::new()
                                 .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
-                                .json(&ChannelContent {
+                                .json(&ChannelContent::ChannelContentV2 {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
@@ -277,10 +277,13 @@ mod tests {
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
                                         activate_by: "".to_string(),
+                                        predominant_color: None,
                                     }],
-                                    played: Played {
+                                    item_duration: 60,
+                                    status: Status {
                                         item: 0,
                                         at: Utc::now(),
+                                        action: Action::Played,
                                     },
                                 })
                                 .send()
@@ -293,7 +296,7 @@ mod tests {
                                 .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
-                                .json(&ChannelContent {
+                                .json(&ChannelContent::ChannelContentV2 {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
@@ -302,10 +305,13 @@ mod tests {
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
                                         activate_by: "".to_string(),
+                                        predominant_color: None,
                                     }],
-                                    played: Played {
+                                    item_duration: 60,
+                                    status: Status {
                                         item: 0,
                                         at: Utc::now(),
+                                        action: Action::Played,
                                     },
                                 })
                                 .send()
@@ -315,9 +321,23 @@ mod tests {
                         1 => {
                             let content =
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
-                            assert!(content.items.len() == 1);
-                            assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
-                            assert!(content.played.item == 0);
+
+                            if let ChannelContent::ChannelContentV2 {
+                                items,
+                                item_duration,
+                                status,
+                            } = content
+                            {
+                                assert!(items.len() == 1);
+                                assert!(items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
+                                    .parse::<AssetId>()
+                                    .unwrap());
+                                assert!(item_duration == 60);
+                                assert!(status.item == 0);
+                                assert!(status.action == Action::Played);
+                            } else {
+                                panic!("Expected ChannelContentV2 variant");
+                            }
 
                             // check if channel is taken
                             let result = reqwest::Client::new()
@@ -356,7 +376,7 @@ mod tests {
                                 .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
-                                .json(&ChannelContent {
+                                .json(&ChannelContent::ChannelContentV2 {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
@@ -365,10 +385,13 @@ mod tests {
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
                                         apply_matte: false,
                                         activate_by: "".to_string(),
+                                        predominant_color: None,
                                     }],
-                                    played: Played {
+                                    item_duration: 60,
+                                    status: Status {
                                         item: 1,
                                         at: Utc::now(),
+                                        action: Action::Played,
                                     },
                                 })
                                 .send()
@@ -378,9 +401,21 @@ mod tests {
                         2 => {
                             let content =
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
-                            assert!(content.items.len() == 1);
-                            assert!(content.items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
-                            assert!(content.played.item == 1);
+
+                            if let ChannelContent::ChannelContentV2 {
+                                items,
+                                item_duration,
+                                status,
+                            } = content
+                            {
+                                assert!(items.len() == 1);
+                                assert!(items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
+                                assert!(item_duration == 60);
+                                assert!(status.item == 1);
+                                assert!(status.action == Action::Played);
+                            } else {
+                                panic!("Expected ChannelContentV2 variant");
+                            }
                         }
                         _ => {
                             panic!("Unexpected event");
@@ -459,7 +494,7 @@ Issued At: {}"#,
             .post(format!("{}/v1/channel/test", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
-            .json(&ChannelContent {
+            .json(&ChannelContent::ChannelContentV2 {
                 items: vec![Item {
                     id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                         .parse::<AssetId>()
@@ -470,10 +505,13 @@ Issued At: {}"#,
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
                     apply_matte: false,
                     activate_by: "".to_string(),
+                    predominant_color: None,
                 }],
-                played: Played {
+                item_duration: 60,
+                status: Status {
                     item: 0,
                     at: Utc::now(),
+                    action: Action::Played,
                 },
             })
             .send()
@@ -486,7 +524,7 @@ Issued At: {}"#,
             .post(format!("{}/v1/channel/test-user", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
-            .json(&ChannelContent {
+            .json(&ChannelContent::ChannelContentV2 {
                 items: vec![Item {
                     id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                         .parse::<AssetId>()
@@ -497,10 +535,13 @@ Issued At: {}"#,
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
                     apply_matte: false,
                     activate_by: "".to_string(),
+                    predominant_color: None,
                 }],
-                played: Played {
+                item_duration: 60,
+                status: Status {
                     item: 0,
                     at: Utc::now(),
+                    action: Action::Played,
                 },
             })
             .send()
@@ -560,7 +601,7 @@ Issued At: {}"#,
             .post(format!("{}/v1/channel/test-wallet", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
-            .json(&ChannelContent {
+            .json(&ChannelContent::ChannelContentV2 {
                 items: vec![Item {
                     id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                         .parse::<AssetId>()
@@ -571,10 +612,13 @@ Issued At: {}"#,
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
                     apply_matte: false,
                     activate_by: "".to_string(),
+                    predominant_color: None,
                 }],
-                played: Played {
+                item_duration: 60,
+                status: Status {
                     item: 0,
                     at: Utc::now(),
+                    action: Action::Played,
                 },
             })
             .send()
