@@ -38,14 +38,14 @@ pub struct Item {
 #[serde(untagged)]
 #[serde(rename_all = "camelCase")]
 pub enum ChannelContent {
+    ChannelContentV1 {
+        items: Vec<Item>,
+        played: Played,
+    },
     ChannelContentV2 {
         items: Vec<Item>,
         item_duration: u32,
         status: Status,
-    },
-    ChannelContentV1 {
-        items: Vec<Item>,
-        played: Played,
     },
 }
 
