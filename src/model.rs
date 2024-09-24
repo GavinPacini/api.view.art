@@ -50,6 +50,15 @@ pub enum ChannelContent {
     },
 }
 
+impl ChannelContent {
+    pub fn items(&self) -> &Vec<Item> {
+        match self {
+            ChannelContent::ChannelContentV1 { items, .. } => items,
+            ChannelContent::ChannelContentV2 { items, .. } => items,
+        }
+    }
+}
+
 // ChannelContentV2
 
 // Function to provide the default value
@@ -61,7 +70,13 @@ fn default_item_duration() -> u32 {
 pub struct Status {
     pub item: u32,
     pub at: DateTime<Utc>,
-    pub action: String,
+    pub action: Action,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Action {
+    Played,
+    Paused,
 }
 
 // ChannelContentV1

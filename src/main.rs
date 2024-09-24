@@ -162,7 +162,7 @@ mod tests {
         chrono::{SecondsFormat, Utc},
         eventsource_stream::Eventsource,
         futures::StreamExt,
-        model::{ChannelContent, EmptyChannelContent, GetAuth, Item, Status, VerifyAuth},
+        model::{Action, ChannelContent, EmptyChannelContent, GetAuth, Item, Status, VerifyAuth},
         routes::auth::tests::get_team_api_key,
         serde_json::{json, Value},
         siwe::Message,
@@ -283,7 +283,7 @@ mod tests {
                                     status: Status {
                                         item: 0,
                                         at: Utc::now(),
-                                        action: "played".to_string(),
+                                        action: Action::Played,
                                     },
                                 })
                                 .send()
@@ -311,7 +311,7 @@ mod tests {
                                     status: Status {
                                         item: 0,
                                         at: Utc::now(),
-                                        action: "played".to_string(),
+                                        action: Action::Played,
                                     },
                                 })
                                 .send()
@@ -334,7 +334,7 @@ mod tests {
                                     .unwrap());
                                 assert!(item_duration == 60);
                                 assert!(status.item == 0);
-                                assert!(status.action == "played");
+                                assert!(status.action == Action::Played);
                             } else {
                                 panic!("Expected ChannelContentV2 variant");
                             }
@@ -391,7 +391,7 @@ mod tests {
                                     status: Status {
                                         item: 1,
                                         at: Utc::now(),
-                                        action: "played".to_string(),
+                                        action: Action::Played,
                                     },
                                 })
                                 .send()
@@ -412,7 +412,7 @@ mod tests {
                                 assert!(items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
                                 assert!(item_duration == 60);
                                 assert!(status.item == 1);
-                                assert!(status.action == "played");
+                                assert!(status.action == Action::Played);
                             } else {
                                 panic!("Expected ChannelContentV2 variant");
                             }
@@ -511,7 +511,7 @@ Issued At: {}"#,
                 status: Status {
                     item: 0,
                     at: Utc::now(),
-                    action: "played".to_string(),
+                    action: Action::Played,
                 },
             })
             .send()
@@ -541,7 +541,7 @@ Issued At: {}"#,
                 status: Status {
                     item: 0,
                     at: Utc::now(),
-                    action: "played".to_string(),
+                    action: Action::Played,
                 },
             })
             .send()
@@ -618,7 +618,7 @@ Issued At: {}"#,
                 status: Status {
                     item: 0,
                     at: Utc::now(),
-                    action: "played".to_string(),
+                    action: Action::Played,
                 },
             })
             .send()

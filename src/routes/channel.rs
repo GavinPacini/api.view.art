@@ -152,10 +152,7 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
             let mut summary = json!({});
 
             // Get items from content across all versions
-            let items = match content {
-                ChannelContent::ChannelContentV1 { items, .. } => items,
-                ChannelContent::ChannelContentV2 { items, .. } => items,
-            };
+            let items = content.items();
 
             // Add items to summary
             summary["items"] = json!(items.len());
@@ -299,10 +296,7 @@ fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
     let mut ids = HashSet::new();
 
     // Get items from content across all versions
-    let items = match channel_content {
-        ChannelContent::ChannelContentV1 { items, .. } => items,
-        ChannelContent::ChannelContentV2 { items, .. } => items,
-    };
+    let items = channel_content.items();
 
     for item in items {
         if ids.contains(&item.id) {
