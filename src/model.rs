@@ -57,6 +57,23 @@ impl ChannelContent {
             ChannelContent::ChannelContentV2 { items, .. } => items,
         }
     }
+
+    pub fn v2(self) -> ChannelContent {
+        match self {
+            ChannelContent::ChannelContentV1 { items, played } => {
+                ChannelContent::ChannelContentV2 {
+                    items,
+                    item_duration: default_item_duration(),
+                    status: Status {
+                        item: played.item,
+                        at: played.at,
+                        action: Action::Played,
+                    },
+                }
+            }
+            content @ ChannelContent::ChannelContentV2 { .. } => content,
+        }
+    }
 }
 
 // ChannelContentV2

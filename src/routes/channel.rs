@@ -63,10 +63,14 @@ pub async fn get_channel(
     let stream = BroadcastStream::new(rx).map(|content| {
         let event = match content {
             Ok(content) => match content {
-                Some(content) => Event::default()
-                    .json_data(content)
-                    .unwrap()
-                    .event("content"),
+                Some(content) => {
+                    // map to v2
+                    let content_v2 = content.v2();
+                    Event::default()
+                        .json_data(content_v2)
+                        .unwrap()
+                        .event("content")
+                }
                 None => Event::default()
                     .json_data(EmptyChannelContent::default())
                     .unwrap()
@@ -81,8 +85,11 @@ pub async fn get_channel(
         Ok::<Event, Infallible>(event)
     });
 
+    // map channel content to v2
+    let initial_content_v2 = initial_content.map(|content| content.v2());
+
     // send initial content to subscribers
-    match tx.send(initial_content) {
+    match tx.send(initial_content_v2) {
         Ok(len) => {
             tracing::debug!("sent {} to {} receivers", channel, len);
         }
