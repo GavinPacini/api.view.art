@@ -60,11 +60,6 @@ impl ChannelContent {
 
 // ChannelContentV2
 
-// Function to provide the default value
-fn default_item_duration() -> u32 {
-    60
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
     pub item: u32,
