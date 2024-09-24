@@ -1,7 +1,7 @@
 use {
     super::auth::Claims,
     crate::{
-        model::{ChannelContent, EmptyChannelContent, OldChannelContent, Status},
+        model::{ChannelContent, EmptyChannelContent},
         routes::internal_error,
         utils::{
             address_migration::migrate_addresses,
@@ -26,32 +26,6 @@ use {
     tokio_stream::wrappers::BroadcastStream,
 };
 
-// Centralized deserialization function to handle both old and new formats
-pub fn deserialize_channel_content(content: &str) -> Result<ChannelContent> {
-    // Try to deserialize to the new format
-    match serde_json::from_str::<ChannelContent>(content) {
-        Ok(new_content) => Ok(new_content),
-        Err(_) => {
-            // If deserialization fails, try to deserialize to the old format
-            match serde_json::from_str::<OldChannelContent>(content) {
-                Ok(old_content) => {
-                    // Convert the old content to the new format
-                    Ok(ChannelContent {
-                        items: old_content.items,
-                        item_duration: 60,
-                        status: Status {
-                            item: old_content.played.item,
-                            at: old_content.played.at,
-                            action: "played".to_string(), // Default action for old format
-                        },
-                    })
-                }
-                Err(err) => Err(anyhow!("Failed to deserialize content: {:?}", err)),
-            }
-        }
-    }
-}
-
 pub async fn get_channel(
     state: State<AppState>,
     Path(channel): Path<String>,
@@ -65,18 +39,8 @@ pub async fn get_channel(
     // get content from DB if set
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
-            Ok(mut conn) => match conn.get::<&str, String>(key.as_str()).await {
-                Ok(content) => match deserialize_channel_content(&content) {
-                    Ok(content) => Some(content),
-                    Err(err) => {
-                        tracing::error!(
-                            "Error deserializing content for channel {}: {:?}",
-                            channel,
-                            err
-                        );
-                        None
-                    }
-                },
+            Ok(mut conn) => match conn.get(&key).await {
+                Ok(content) => Some(content),
                 Err(err) => {
                     tracing::error!("Error getting content for channel {}: {:?}", channel, err);
                     None
@@ -168,18 +132,8 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     let initial_content: Option<ChannelContent> = {
         match state.pool.get().await {
-            Ok(mut conn) => match conn.get::<&str, String>(key.as_str()).await {
-                Ok(content) => match deserialize_channel_content(&content) {
-                    Ok(content) => Some(content),
-                    Err(err) => {
-                        tracing::error!(
-                            "Error deserializing content for channel {}: {:?}",
-                            channel,
-                            err
-                        );
-                        None
-                    }
-                },
+            Ok(mut conn) => match conn.get(&key).await {
+                Ok(content) => Some(content),
                 Err(err) => {
                     tracing::error!("Error getting content for channel {}: {:?}", channel, err);
                     None
@@ -197,11 +151,17 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
             // Make summary a default JSON object
             let mut summary = json!({});
 
+            // Get items from content across all versions
+            let items = match content {
+                ChannelContent::ChannelContentV1 { items, .. } => items,
+                ChannelContent::ChannelContentV2 { items, .. } => items,
+            };
+
             // Add items to summary
-            summary["items"] = json!(content.items.len());
+            summary["items"] = json!(items.len());
 
             // Add thumbnail to summary
-            if let Some(thumbnail) = content.items.first().map(|item| item.thumbnail_url.clone()) {
+            if let Some(thumbnail) = items.first().map(|item| item.thumbnail_url.clone()) {
                 summary["thumbnail"] = json!(thumbnail);
             }
 
@@ -337,14 +297,21 @@ pub async fn set_channel(
 fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
     // ensure all ids are unique in items
     let mut ids = HashSet::new();
-    for item in &channel_content.items {
+
+    // Get items from content across all versions
+    let items = match channel_content {
+        ChannelContent::ChannelContentV1 { items, .. } => items,
+        ChannelContent::ChannelContentV2 { items, .. } => items,
+    };
+
+    for item in items {
         if ids.contains(&item.id) {
             return Err(anyhow!("duplicate item id: {}", item.id));
         }
         ids.insert(item.id.clone());
     }
 
-    for item in &channel_content.items {
+    for item in items {
         if item.title.is_empty() || item.title.len() > 100 {
             return Err(anyhow!(
                 "item title must be between 1 and 100 characters, for id {}",

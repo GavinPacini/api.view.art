@@ -35,13 +35,22 @@ pub struct Item {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 #[serde(rename_all = "camelCase")]
-pub struct ChannelContent {
-    pub items: Vec<Item>,
-    #[serde(default = "default_item_duration")]
-    pub item_duration: u32,
-    pub status: Status,
+pub enum ChannelContent {
+    ChannelContentV1 {
+        items: Vec<Item>,
+        played: Played,
+    },
+    ChannelContentV2 {
+        items: Vec<Item>,
+        #[serde(default = "default_item_duration")]
+        item_duration: u32,
+        status: Status,
+    },
 }
+
+// ChannelContentV2
 
 // Function to provide the default value
 fn default_item_duration() -> u32 {
@@ -55,17 +64,15 @@ pub struct Status {
     pub action: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OldChannelContent {
-    pub items: Vec<Item>,
-    pub played: Played,
-}
+// ChannelContentV1
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Played {
     pub item: u32,
     pub at: DateTime<Utc>,
 }
+
+// EmptyChannelContent
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmptyChannelContent {
