@@ -44,6 +44,7 @@ pub enum ChannelContent {
     },
     ChannelContentV2 {
         items: Vec<Item>,
+        #[serde(default = "default_item_duration")]
         item_duration: u32,
         status: Status,
     },
@@ -59,6 +60,11 @@ impl ChannelContent {
 }
 
 // ChannelContentV2
+
+// Function to provide the default value
+fn default_item_duration() -> u32 {
+    60
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
