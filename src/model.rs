@@ -40,7 +40,6 @@ pub struct Item {
 pub enum ChannelContent {
     ChannelContentV2 {
         items: Vec<Item>,
-        #[serde(default = "default_item_duration")]
         item_duration: u32,
         status: Status,
     },
