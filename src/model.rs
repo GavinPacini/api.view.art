@@ -36,7 +36,7 @@ pub struct Item {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all_fields = "camelCase")]
 pub enum ChannelContent {
     ChannelContentV1 {
         items: Vec<Item>,
