@@ -74,6 +74,7 @@ pub struct Status {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum Action {
     Played,
     Paused,
