@@ -268,7 +268,7 @@ pub mod tests {
     #[ignore]
     #[test]
     /// This test can be used to generate a token for the team API key
-    /// You must set JWT_SECRET to the production secret
+    /// You must set JWT_SECRET to the production secret and then run:
     /// cargo test test_generate_claim_for_0x0 -- --ignored --nocapture
     fn test_generate_claim_for_0x0() {
         let key = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");

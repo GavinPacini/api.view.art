@@ -144,3 +144,30 @@ impl FromRedisValue for ChannelContent {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChannelContentV2Test {
+        items: Vec<Item>,
+        #[serde(default = "default_item_duration")]
+        item_duration: u32,
+        status: Status,
+    }
+
+    #[ignore]
+    #[test]
+    /// This test can be used to test the channel content v2 serialization
+    /// You need to populate the test_channel_content.json file with the
+    /// channel content you want to test and then run:
+    /// cargo test test_channel_content_v2_serialization -- --ignored
+    /// --nocapture
+    fn test_channel_content_v2_serialization() {
+        let channel_content = include_str!("../test/test_channel_content.json");
+
+        let _: ChannelContentV2Test = serde_json::from_str(channel_content).unwrap();
+    }
+}
