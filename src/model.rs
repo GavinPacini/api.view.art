@@ -29,6 +29,8 @@ pub struct Item {
     pub artist: Option<String>,
     pub url: Url,
     pub thumbnail_url: Url,
+    #[serde(default = "default_item_rotation_angle")]
+    pub rotation_angle: u32,
     pub apply_matte: bool,
     pub activate_by: String,
     pub predominant_color: Option<String>,
@@ -38,15 +40,21 @@ pub struct Item {
 #[serde(untagged)]
 #[serde(rename_all_fields = "camelCase")]
 pub enum ChannelContent {
-    ChannelContentV1 {
+    ChannelContentV3 {
         items: Vec<Item>,
-        played: Played,
+        #[serde(default = "default_display")]
+        display: Display,
+        status: Status,
     },
     ChannelContentV2 {
         items: Vec<Item>,
         #[serde(default = "default_item_duration")]
         item_duration: u32,
         status: Status,
+    },
+    ChannelContentV1 {
+        items: Vec<Item>,
+        played: Played,
     },
 }
 
@@ -55,15 +63,16 @@ impl ChannelContent {
         match self {
             ChannelContent::ChannelContentV1 { items, .. } => items,
             ChannelContent::ChannelContentV2 { items, .. } => items,
+            ChannelContent::ChannelContentV3 { items, .. } => items,
         }
     }
 
-    pub fn v2(self) -> ChannelContent {
+    pub fn v3(self) -> ChannelContent {
         match self {
             ChannelContent::ChannelContentV1 { items, played } => {
-                ChannelContent::ChannelContentV2 {
+                ChannelContent::ChannelContentV3 {
                     items,
-                    item_duration: default_item_duration(),
+                    display: default_display(),
                     status: Status {
                         item: played.item,
                         at: played.at,
@@ -71,9 +80,42 @@ impl ChannelContent {
                     },
                 }
             }
-            content @ ChannelContent::ChannelContentV2 { .. } => content,
+            ChannelContent::ChannelContentV2 {
+                items,
+                item_duration,
+                status,
+            } => {
+                let mut default_display = default_display();
+                default_display.item_duration = item_duration;
+                ChannelContent::ChannelContentV3 {
+                    items,
+                    display: default_display,
+                    status,
+                }
+            }
+            content @ ChannelContent::ChannelContentV3 { .. } => content,
         }
     }
+}
+
+// ChannelContentV3
+
+fn default_display() -> Display {
+    Display {
+        item_duration: 60,
+        show_attribution: false,
+        background_color: String::from("#000000"),
+        show_border: false,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Display {
+    pub item_duration: u32,
+    pub show_attribution: bool,
+    pub background_color: String,
+    pub show_border: bool,
 }
 
 // ChannelContentV2
@@ -103,6 +145,13 @@ pub enum Action {
 pub struct Played {
     pub item: u32,
     pub at: DateTime<Utc>,
+}
+
+// Item
+
+// Function to provide the default value for item rotation angle
+fn default_item_rotation_angle() -> u32 {
+    0
 }
 
 // EmptyChannelContent
@@ -151,23 +200,21 @@ mod tests {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct ChannelContentV2Test {
+    struct ChannelContentV3Test {
         items: Vec<Item>,
-        #[serde(default = "default_item_duration")]
-        item_duration: u32,
+        display: Display,
         status: Status,
     }
 
     #[ignore]
     #[test]
-    /// This test can be used to test the channel content v2 serialization
+    /// This test can be used to test the channel content v3 serialization
     /// You need to populate the test_channel_content.json file with the
     /// channel content you want to test and then run:
-    /// cargo test test_channel_content_v2_serialization -- --ignored
+    /// cargo test test_channel_content_v3_serialization -- --ignored
     /// --nocapture
-    fn test_channel_content_v2_serialization() {
+    fn test_channel_content_v3_serialization() {
         let channel_content = include_str!("../test/test_channel_content.json");
-
-        let _: ChannelContentV2Test = serde_json::from_str(channel_content).unwrap();
+        let _: ChannelContentV3Test = serde_json::from_str(channel_content).unwrap();
     }
 }
