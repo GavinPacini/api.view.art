@@ -162,7 +162,7 @@ mod tests {
         chrono::{SecondsFormat, Utc},
         eventsource_stream::Eventsource,
         futures::StreamExt,
-        model::{Action, ChannelContent, EmptyChannelContent, GetAuth, Item, Status, VerifyAuth},
+        model::{Action, ChannelContent, EmptyChannelContent, GetAuth, Item, Display, Status, VerifyAuth},
         routes::auth::tests::get_team_api_key,
         serde_json::{json, Value},
         siwe::Message,
@@ -275,6 +275,7 @@ mod tests {
                                         artist: Some("test".to_string()),
                                         url: Url::parse("https://test.com").unwrap(),
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
+                                        rotation_angle: 0,
                                         apply_matte: false,
                                         activate_by: "".to_string(),
                                         predominant_color: None,
@@ -308,6 +309,7 @@ mod tests {
                                         artist: Some("test".to_string()),
                                         url: Url::parse("https://test.com").unwrap(),
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
+                                        rotation_angle: 0,
                                         apply_matte: false,
                                         activate_by: "".to_string(),
                                         predominant_color: None,
@@ -343,9 +345,9 @@ mod tests {
                                     .parse::<AssetId>()
                                     .unwrap());
                                 assert!(display.item_duration == 60);
-                                assert!(display.background_color == "#ffffff".to_string());
-                                assert!(display.show_attribution == false);
-                                assert!(display.show_border == false);
+                                assert!(display.background_color == *"#ffffff".to_string());
+                                assert!(!display.show_attribution);
+                                assert!(!display.show_border);
                                 assert!(status.item == 0);
                                 assert!(status.action == Action::Played);
                             } else {
@@ -396,6 +398,7 @@ mod tests {
                                         artist: Some("test".to_string()),
                                         url: Url::parse("https://test.com").unwrap(),
                                         thumbnail_url: Url::parse("https://test.com").unwrap(),
+                                        rotation_angle: 0,
                                         apply_matte: false,
                                         activate_by: "".to_string(),
                                         predominant_color: None,
@@ -429,9 +432,9 @@ mod tests {
                                 assert!(items.len() == 1);
                                 assert!(items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
                                 assert!(display.item_duration == 60);
-                                assert!(display.background_color == "#ffffff".to_string());
-                                assert!(display.show_attribution == false);
-                                assert!(display.show_border == false);
+                                assert!(display.background_color == *"#ffffff".to_string());
+                                assert!(!display.show_attribution);
+                                assert!(!display.show_border);
                                 assert!(status.item == 1);
                                 assert!(status.action == Action::Played);
                             } else {
@@ -524,11 +527,17 @@ Issued At: {}"#,
                     artist: Some("test".to_string()),
                     url: Url::parse("https://test.com").unwrap(),
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
+                    rotation_angle: 0,
                     apply_matte: false,
                     activate_by: "".to_string(),
                     predominant_color: None,
                 }],
-                item_duration: 60,
+                display: Display {
+                    item_duration: 60,
+                    background_color: "#ffffff".to_string(),
+                    show_attribution: false,
+                    show_border: false,
+                },
                 status: Status {
                     item: 0,
                     at: Utc::now(),
@@ -554,6 +563,7 @@ Issued At: {}"#,
                     artist: Some("test".to_string()),
                     url: Url::parse("https://test.com").unwrap(),
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
+                    rotation_angle: 0,
                     apply_matte: false,
                     activate_by: "".to_string(),
                     predominant_color: None,
@@ -636,6 +646,7 @@ Issued At: {}"#,
                     artist: Some("test".to_string()),
                     url: Url::parse("https://test.com").unwrap(),
                     thumbnail_url: Url::parse("https://test.com").unwrap(),
+                    rotation_angle: 0,
                     apply_matte: false,
                     activate_by: "".to_string(),
                     predominant_color: None,
