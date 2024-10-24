@@ -66,6 +66,7 @@ impl ChannelContent {
             ChannelContent::ChannelContentV3 { items, .. } => items,
         }
     }
+
     pub fn v3(self) -> ChannelContent {
         match self {
             ChannelContent::ChannelContentV1 { items, played } => {
@@ -91,7 +92,7 @@ impl ChannelContent {
                     display: default_display,
                     status,
                 }
-            },
+            }
             content @ ChannelContent::ChannelContentV3 { .. } => content,
         }
     }
