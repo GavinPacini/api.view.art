@@ -96,17 +96,18 @@ impl ChannelContent {
                     },
                 }
             }
-            ChannelContent::ChannelContentV2 { items, item_duration, status } => {
-                ChannelContent::ChannelContentV3 {
-                    items,
-                    display: default_display(item_duration),
-                    status,
-                }
-            }
+            ChannelContent::ChannelContentV2 {
+                items,
+                item_duration,
+                status,
+            } => ChannelContent::ChannelContentV3 {
+                items,
+                display: default_display(item_duration),
+                status,
+            },
             content @ ChannelContent::ChannelContentV3 { .. } => content,
         }
     }
-
 }
 
 // ChannelContentV3
@@ -135,7 +136,6 @@ pub struct Display {
 fn default_item_duration() -> u32 {
     60
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
