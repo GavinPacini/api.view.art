@@ -40,9 +40,11 @@ pub struct Item {
 #[serde(untagged)]
 #[serde(rename_all_fields = "camelCase")]
 pub enum ChannelContent {
-    ChannelContentV1 {
+    ChannelContentV3 {
         items: Vec<Item>,
-        played: Played,
+        #[serde(default = "default_display")]
+        display: Display,
+        status: Status,
     },
     ChannelContentV2 {
         items: Vec<Item>,
@@ -50,11 +52,9 @@ pub enum ChannelContent {
         item_duration: u32,
         status: Status,
     },
-    ChannelContentV3 {
+    ChannelContentV1 {
         items: Vec<Item>,
-        #[serde(default = "default_display")]
-        display: Display,
-        status: Status,
+        played: Played,
     },
 }
 
@@ -103,7 +103,7 @@ fn default_display() -> Display {
     Display {
         item_duration: 60,
         show_attribution: false,
-        background_color: String::from("#ffffff"),
+        background_color: String::from("#000000"),
         show_border: false,
     }
 }
@@ -201,7 +201,6 @@ mod tests {
     #[serde(rename_all = "camelCase")]
     struct ChannelContentV3Test {
         items: Vec<Item>,
-        #[serde(default = "default_display")]
         display: Display,
         status: Status,
     }
