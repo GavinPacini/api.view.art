@@ -30,6 +30,7 @@ pub struct Item {
     pub url: Url,
     pub thumbnail_url: Url,
     pub apply_matte: bool,
+    pub rotation_angle: u32,
     pub activate_by: String,
     pub predominant_color: Option<String>,
 }
@@ -48,6 +49,12 @@ pub enum ChannelContent {
         item_duration: u32,
         status: Status,
     },
+    ChannelContentV3 {
+        items: Vec<Item>,
+        #[serde(default = "default_display")]
+        display: Display,
+        status: Status,
+    },
 }
 
 impl ChannelContent {
@@ -55,6 +62,7 @@ impl ChannelContent {
         match self {
             ChannelContent::ChannelContentV1 { items, .. } => items,
             ChannelContent::ChannelContentV2 { items, .. } => items,
+            ChannelContent::ChannelContentV3 { items, .. } => items,
         }
     }
 
@@ -74,6 +82,51 @@ impl ChannelContent {
             content @ ChannelContent::ChannelContentV2 { .. } => content,
         }
     }
+
+    pub fn v3(self) -> ChannelContent {
+        match self {
+            ChannelContent::ChannelContentV1 { items, played } => {
+                ChannelContent::ChannelContentV3 {
+                    items,
+                    display: default_display(default_item_duration()),
+                    status: Status {
+                        item: played.item,
+                        at: played.at,
+                        action: Action::Played,
+                    },
+                }
+            }
+            ChannelContent::ChannelContentV2 { items, item_duration, status } => {
+                ChannelContent::ChannelContentV3 {
+                    items,
+                    display: default_display(item_duration),
+                    status,
+                }
+            }
+            content @ ChannelContent::ChannelContentV3 { .. } => content,
+        }
+    }
+
+}
+
+// ChannelContentV3
+
+fn default_display(item_duration: u32) -> Display {
+    Display {
+        item_duration,
+        show_attribution: false,
+        background_color: String::from("#ffffff"),
+        show_border: false,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Display {
+    pub item_duration: u32,
+    pub show_attribution: bool,
+    pub background_color: String,
+    pub show_border: bool,
 }
 
 // ChannelContentV2
@@ -82,6 +135,7 @@ impl ChannelContent {
 fn default_item_duration() -> u32 {
     60
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Status {
@@ -103,6 +157,13 @@ pub enum Action {
 pub struct Played {
     pub item: u32,
     pub at: DateTime<Utc>,
+}
+
+// Item
+
+// Function to provide the default value for item rotation angle
+fn default_item_rotation_angle() -> u32 {
+    0
 }
 
 // EmptyChannelContent

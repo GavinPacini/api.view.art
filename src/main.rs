@@ -268,7 +268,7 @@ mod tests {
                             let result = reqwest::Client::new()
                                 .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
-                                .json(&ChannelContent::ChannelContentV2 {
+                                .json(&ChannelContent::ChannelContentV3 {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
@@ -279,7 +279,12 @@ mod tests {
                                         activate_by: "".to_string(),
                                         predominant_color: None,
                                     }],
-                                    item_duration: 60,
+                                    display: Display {
+                                        item_duration: 60,
+                                        background_color: "#ffffff".to_string(),
+                                        show_attribution: false,
+                                        show_border: false,
+                                    },
                                     status: Status {
                                         item: 0,
                                         at: Utc::now(),
@@ -296,7 +301,7 @@ mod tests {
                                 .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
-                                .json(&ChannelContent::ChannelContentV2 {
+                                .json(&ChannelContent::ChannelContentV3 {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
@@ -307,7 +312,12 @@ mod tests {
                                         activate_by: "".to_string(),
                                         predominant_color: None,
                                     }],
-                                    item_duration: 60,
+                                    display: Display {
+                                        item_duration: 60,
+                                        background_color: "#ffffff".to_string(),
+                                        show_attribution: false,
+                                        show_border: false,
+                                    },
                                     status: Status {
                                         item: 0,
                                         at: Utc::now(),
@@ -322,9 +332,9 @@ mod tests {
                             let content =
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
 
-                            if let ChannelContent::ChannelContentV2 {
+                            if let ChannelContent::ChannelContentV3 {
                                 items,
-                                item_duration,
+                                display,
                                 status,
                             } = content
                             {
@@ -332,11 +342,14 @@ mod tests {
                                 assert!(items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                                     .parse::<AssetId>()
                                     .unwrap());
-                                assert!(item_duration == 60);
+                                assert!(display.item_duration == 60);
+                                assert!(display.background_color == "#ffffff".to_string());
+                                assert!(display.show_attribution == false);
+                                assert!(display.show_border == false);
                                 assert!(status.item == 0);
                                 assert!(status.action == Action::Played);
                             } else {
-                                panic!("Expected ChannelContentV2 variant");
+                                panic!("Expected ChannelContentV3 variant");
                             }
 
                             // check if channel is taken
@@ -376,7 +389,7 @@ mod tests {
                                 .post(format!("{}/v1/channel/test", listening_url))
                                 .header("User-Agent", "integration_test")
                                 .header("Authorization", format!("Bearer {}", authorization))
-                                .json(&ChannelContent::ChannelContentV2 {
+                                .json(&ChannelContent::ChannelContentV3 {
                                     items: vec![Item {
                                         id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap(),
                                         title: "test".to_string(),
@@ -387,7 +400,12 @@ mod tests {
                                         activate_by: "".to_string(),
                                         predominant_color: None,
                                     }],
-                                    item_duration: 60,
+                                    display: Display {
+                                        item_duration: 60,
+                                        background_color: "#ffffff".to_string(),
+                                        show_attribution: false,
+                                        show_border: false,
+                                    },
                                     status: Status {
                                         item: 1,
                                         at: Utc::now(),
@@ -402,19 +420,22 @@ mod tests {
                             let content =
                                 serde_json::from_str::<ChannelContent>(&event.data).unwrap();
 
-                            if let ChannelContent::ChannelContentV2 {
+                            if let ChannelContent::ChannelContentV3 {
                                 items,
-                                item_duration,
+                                display,
                                 status,
                             } = content
                             {
                                 assert!(items.len() == 1);
                                 assert!(items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769".parse::<AssetId>().unwrap());
-                                assert!(item_duration == 60);
+                                assert!(display.item_duration == 60);
+                                assert!(display.background_color == "#ffffff".to_string());
+                                assert!(display.show_attribution == false);
+                                assert!(display.show_border == false);
                                 assert!(status.item == 1);
                                 assert!(status.action == Action::Played);
                             } else {
-                                panic!("Expected ChannelContentV2 variant");
+                                panic!("Expected ChannelContentV3 variant");
                             }
                         }
                         _ => {
@@ -494,7 +515,7 @@ Issued At: {}"#,
             .post(format!("{}/v1/channel/test", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
-            .json(&ChannelContent::ChannelContentV2 {
+            .json(&ChannelContent::ChannelContentV3 {
                 items: vec![Item {
                     id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                         .parse::<AssetId>()
@@ -524,7 +545,7 @@ Issued At: {}"#,
             .post(format!("{}/v1/channel/test-user", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
-            .json(&ChannelContent::ChannelContentV2 {
+            .json(&ChannelContent::ChannelContentV3 {
                 items: vec![Item {
                     id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                         .parse::<AssetId>()
@@ -537,7 +558,12 @@ Issued At: {}"#,
                     activate_by: "".to_string(),
                     predominant_color: None,
                 }],
-                item_duration: 60,
+                display: Display {
+                    item_duration: 60,
+                    background_color: "#ffffff".to_string(),
+                    show_attribution: false,
+                    show_border: false,
+                },
                 status: Status {
                     item: 0,
                     at: Utc::now(),
@@ -601,7 +627,7 @@ Issued At: {}"#,
             .post(format!("{}/v1/channel/test-wallet", listening_url))
             .header("User-Agent", "integration_test")
             .header("Authorization", format!("Bearer {}", authorization))
-            .json(&ChannelContent::ChannelContentV2 {
+            .json(&ChannelContent::ChannelContentV3 {
                 items: vec![Item {
                     id: "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                         .parse::<AssetId>()
@@ -614,7 +640,12 @@ Issued At: {}"#,
                     activate_by: "".to_string(),
                     predominant_color: None,
                 }],
-                item_duration: 60,
+                display: Display {
+                    item_duration: 60,
+                    background_color: "#ffffff".to_string(),
+                    show_attribution: false,
+                    show_border: false,
+                },
                 status: Status {
                     item: 0,
                     at: Utc::now(),
