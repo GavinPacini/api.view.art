@@ -74,49 +74,47 @@ impl ChannelContent {
             ChannelContent::ChannelContentV3 { items, .. } => items,
             ChannelContent::ChannelContentV4 { items, .. } => items,
         }
+    }
 
-        pub fn v4(self) -> ChannelContent {
-            match self {
-                ChannelContent::ChannelContentV1 { items, played } => {
-                    ChannelContent::ChannelContentV3 {
-                        items,
-                        display: default_display(),
-                        status: Status {
-                            item: played.item,
-                            at: played.at,
-                            action: Action::Played,
-                        },
-                    }
-                }
-                ChannelContent::ChannelContentV2 {
-                    items,
-                    item_duration,
-                    status,
-                } => {
-                    let mut default_display = default_display();
-                    default_display.item_duration = item_duration;
-                    ChannelContent::ChannelContentV3 {
-                        items,
-                        display: default_display,
-                        status,
-                    }
-                }
+    pub fn v4(self) -> ChannelContent {
+        match self {
+            ChannelContent::ChannelContentV1 { items, played } => {
                 ChannelContent::ChannelContentV3 {
                     items,
-                    display,
-                    status,
-                } => {
-                    let mut default_shared_with = default_shared_with();
-                    default_shared_with.extend(shared_with);
-                    ChannelContent::ChannelContentV4 {
-                        items,
-                        display,
-                        shared_with: default_shared_with,
-                        status,
-                    }
+                    display: default_display(),
+                    status: Status {
+                        item: played.item,
+                        at: played.at,
+                        action: Action::Played,
+                    },
                 }
-                content @ ChannelContent::ChannelContentV4 { .. } => content,
             }
+            ChannelContent::ChannelContentV2 {
+                items,
+                item_duration,
+                status,
+            } => {
+                let mut default_display = default_display();
+                default_display.item_duration = item_duration;
+                ChannelContent::ChannelContentV3 {
+                    items,
+                    display: default_display,
+                    status,
+                }
+            }
+            ChannelContent::ChannelContentV3 {
+                items,
+                display,
+                status,
+            } => {
+                ChannelContent::ChannelContentV4 {
+                    items,
+                    display,
+                    shared_with: default_shared_with(),
+                    status,
+                }
+            }
+            content @ ChannelContent::ChannelContentV4 { .. } => content,
         }
     }
 }

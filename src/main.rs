@@ -169,7 +169,6 @@ mod tests {
             EmptyChannelContent,
             GetAuth,
             Item,
-            SharedWith,
             Status,
             VerifyAuth,
         },
