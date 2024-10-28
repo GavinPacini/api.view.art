@@ -40,6 +40,14 @@ pub struct Item {
 #[serde(untagged)]
 #[serde(rename_all_fields = "camelCase")]
 pub enum ChannelContent {
+    ChannelContentV4 {
+        items: Vec<Item>,
+        #[serde(default = "default_display")]
+        display: Display,
+        #[serde(default = "default_shared_with")]
+    shared_with: Vec<Address>,
+        status: Status,
+    },
     ChannelContentV3 {
         items: Vec<Item>,
         #[serde(default = "default_display")]
@@ -64,10 +72,10 @@ impl ChannelContent {
             ChannelContent::ChannelContentV1 { items, .. } => items,
             ChannelContent::ChannelContentV2 { items, .. } => items,
             ChannelContent::ChannelContentV3 { items, .. } => items,
-        }
+            ChannelContent::ChannelContentV4 { items, .. } => items,
     }
 
-    pub fn v3(self) -> ChannelContent {
+    pub fn v4(self) -> ChannelContent {
         match self {
             ChannelContent::ChannelContentV1 { items, played } => {
                 ChannelContent::ChannelContentV3 {
@@ -93,9 +101,29 @@ impl ChannelContent {
                     status,
                 }
             }
-            content @ ChannelContent::ChannelContentV3 { .. } => content,
+            ChannelContent::ChannelContentV3 {
+                items,
+                display, 
+                status
+            } => {
+                let mut default_shared_with = default_shared_with();
+                default_shared_with.extend(shared_with);
+                ChannelContent::ChannelContentV4 {
+                    items,
+                    display,
+                    shared_with: default_shared_with,
+                    status,
+                }
+            }
+            content @ ChannelContent::ChannelContentV4 { .. } => content,
         }
     }
+}
+
+// ChannelContentV4
+
+fn default_shared_with() -> Vec<Address> {
+    vec![]
 }
 
 // ChannelContentV3
