@@ -45,7 +45,7 @@ pub enum ChannelContent {
         #[serde(default = "default_display")]
         display: Display,
         #[serde(default = "default_shared_with")]
-    shared_with: Vec<Address>,
+        shared_with: Vec<Address>,
         status: Status,
     },
     ChannelContentV3 {
@@ -73,49 +73,50 @@ impl ChannelContent {
             ChannelContent::ChannelContentV2 { items, .. } => items,
             ChannelContent::ChannelContentV3 { items, .. } => items,
             ChannelContent::ChannelContentV4 { items, .. } => items,
-    }
+        }
 
-    pub fn v4(self) -> ChannelContent {
-        match self {
-            ChannelContent::ChannelContentV1 { items, played } => {
-                ChannelContent::ChannelContentV3 {
-                    items,
-                    display: default_display(),
-                    status: Status {
-                        item: played.item,
-                        at: played.at,
-                        action: Action::Played,
-                    },
+        pub fn v4(self) -> ChannelContent {
+            match self {
+                ChannelContent::ChannelContentV1 { items, played } => {
+                    ChannelContent::ChannelContentV3 {
+                        items,
+                        display: default_display(),
+                        status: Status {
+                            item: played.item,
+                            at: played.at,
+                            action: Action::Played,
+                        },
+                    }
                 }
-            }
-            ChannelContent::ChannelContentV2 {
-                items,
-                item_duration,
-                status,
-            } => {
-                let mut default_display = default_display();
-                default_display.item_duration = item_duration;
-                ChannelContent::ChannelContentV3 {
+                ChannelContent::ChannelContentV2 {
                     items,
-                    display: default_display,
+                    item_duration,
                     status,
+                } => {
+                    let mut default_display = default_display();
+                    default_display.item_duration = item_duration;
+                    ChannelContent::ChannelContentV3 {
+                        items,
+                        display: default_display,
+                        status,
+                    }
                 }
-            }
-            ChannelContent::ChannelContentV3 {
-                items,
-                display, 
-                status
-            } => {
-                let mut default_shared_with = default_shared_with();
-                default_shared_with.extend(shared_with);
-                ChannelContent::ChannelContentV4 {
+                ChannelContent::ChannelContentV3 {
                     items,
                     display,
-                    shared_with: default_shared_with,
                     status,
+                } => {
+                    let mut default_shared_with = default_shared_with();
+                    default_shared_with.extend(shared_with);
+                    ChannelContent::ChannelContentV4 {
+                        items,
+                        display,
+                        shared_with: default_shared_with,
+                        status,
+                    }
                 }
+                content @ ChannelContent::ChannelContentV4 { .. } => content,
             }
-            content @ ChannelContent::ChannelContentV4 { .. } => content,
         }
     }
 }
@@ -228,9 +229,10 @@ mod tests {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct ChannelContentV3Test {
+    struct ChannelContentV4Test {
         items: Vec<Item>,
         display: Display,
+        shared_with: Vec<Address>,
         status: Status,
     }
 
@@ -241,8 +243,8 @@ mod tests {
     /// channel content you want to test and then run:
     /// cargo test test_channel_content_v3_serialization -- --ignored
     /// --nocapture
-    fn test_channel_content_v3_serialization() {
+    fn test_channel_content_v4_serialization() {
         let channel_content = include_str!("../test/test_channel_content.json");
-        let _: ChannelContentV3Test = serde_json::from_str(channel_content).unwrap();
+        let _: ChannelContentV4Test = serde_json::from_str(channel_content).unwrap();
     }
 }

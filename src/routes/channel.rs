@@ -65,9 +65,9 @@ pub async fn get_channel(
             Ok(content) => match content {
                 Some(content) => {
                     // map to v2
-                    let content_v3 = content.v3();
+                    let content_v4 = content.v4();
                     Event::default()
-                        .json_data(content_v3)
+                        .json_data(content_v4)
                         .unwrap()
                         .event("content")
                 }
@@ -86,10 +86,10 @@ pub async fn get_channel(
     });
 
     // map channel content to v3
-    let initial_content_v3 = initial_content.map(|content| content.v3());
+    let initial_content_v4 = initial_content.map(|content| content.v4());
 
     // send initial content to subscribers
-    match tx.send(initial_content_v3) {
+    match tx.send(initial_content_v4) {
         Ok(len) => {
             tracing::debug!("sent {} to {} receivers", channel, len);
         }
@@ -294,6 +294,173 @@ pub async fn set_channel(
         Err(err) => {
             tracing::error!("Error getting connection from pool: {:?}", err);
             internal_error(anyhow!(err))
+        }
+    }
+}
+
+// Function to set channel editors
+pub async fn set_channel_editors(
+    claims: Claims,
+    state: State<AppState>,
+    Path(channel): Path<String>,
+    Json(editor_addresses): Json<Vec<String>>, // Accepting an array of addresses
+) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+    let owner_address = claims.address.clone();
+
+    tracing::info!(
+        "Setting editors for channel {} by owner {}",
+        channel,
+        owner_address
+    );
+
+    // Check if the caller is the owner of the channel
+    let address_key = address_key(&owner_address);
+    let owned: bool = match state.pool.get().await {
+        Ok(mut conn) => match conn
+            .sismember::<&str, &str, bool>(&address_key, &channel)
+            .await
+        {
+            Ok(owned) => owned,
+            Err(err) => {
+                tracing::error!("Error checking if channel is owned: {:?}", err);
+                return internal_error(anyhow!(err));
+            }
+        },
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    };
+
+    if !owned {
+        return (
+            StatusCode::FORBIDDEN,
+            json!({ "status": false, "error": "not authorized to edit this channel" }).to_string(),
+        );
+    }
+
+    // Validate the format of the additional addresses
+    for address in &editor_addresses {
+        if !address
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                json!({ "status": false, "error": format!("invalid address format: {}", address) })
+                    .to_string(),
+            );
+        }
+    }
+
+    // Update the Redis set with the additional addresses
+    let channel_key = channel_key(&channel);
+    match state.pool.get().await {
+        Ok(mut conn) => {
+            for editor_address in editor_addresses {
+                if let Err(err) = conn
+                    .sadd::<&str, &str, ()>(&channel_key, &editor_address)
+                    .await
+                {
+                    tracing::error!(
+                        "Error adding editor {} to channel {}: {:?}",
+                        editor_address,
+                        channel,
+                        err
+                    );
+                    return internal_error(anyhow!(err));
+                }
+            }
+
+            // Broadcast the changes
+            state
+                .changes
+                .broadcast(&channel, json!({ "editors": editor_addresses }))
+                .await;
+
+            (
+                StatusCode::OK,
+                json!({ "status": true, "message": "Editors updated successfully" }).to_string(),
+            )
+        }
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    }
+}
+
+// Function to remove a channel from a user's wallet set
+pub async fn remove_channel_editors(
+    claims: Claims,
+    state: State<AppState>,
+    Path(channel): Path<String>,
+) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+    let owner_address = claims.address.clone();
+
+    tracing::info!(
+        "Removing channel {} from wallet of owner {}",
+        channel,
+        owner_address
+    );
+
+    // Check if the caller is the owner of the channel
+    let address_key = address_key(&owner_address);
+    let owned: bool = match state.pool.get().await {
+        Ok(mut conn) => match conn
+            .sismember::<&str, &str, bool>(&address_key, &channel)
+            .await
+        {
+            Ok(owned) => owned,
+            Err(err) => {
+                tracing::error!("Error checking if channel is owned: {:?}", err);
+                return internal_error(anyhow!(err));
+            }
+        },
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    };
+
+    if !owned {
+        return (
+            StatusCode::FORBIDDEN,
+            json!({ "status": false, "error": "not authorized to remove this channel" })
+                .to_string(),
+        );
+    }
+
+    // Remove the channel from the wallet set in Redis
+    let channel_key = channel_key(&channel);
+    match state.pool.get().await {
+        Ok(mut conn) => {
+            // Remove the channel from the owner's set
+            if let Err(err) = conn.srem::<&str, &str, ()>(&address_key, &channel).await {
+                tracing::error!(
+                    "Error removing channel {} from wallet set: {:?}",
+                    channel,
+                    err
+                );
+                return internal_error(anyhow!(err));
+            }
+
+            // Broadcast the changes
+            state
+                .changes
+                .broadcast(&channel, json!({ "removed": true }))
+                .await;
+
+            (
+                StatusCode::OK,
+                json!({ "status": true, "message": "Channel removed successfully" }).to_string(),
+            )
+        }
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
         }
     }
 }
