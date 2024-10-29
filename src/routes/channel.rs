@@ -9,6 +9,7 @@ use {
         },
         AppState,
     },
+    alloy::primitives::Address,
     anyhow::{anyhow, Result},
     axum::{
         extract::{Path, State},
@@ -65,9 +66,9 @@ pub async fn get_channel(
             Ok(content) => match content {
                 Some(content) => {
                     // map to v2
-                    let content_v3 = content.v3();
+                    let content_v4 = content.v4();
                     Event::default()
-                        .json_data(content_v3)
+                        .json_data(content_v4)
                         .unwrap()
                         .event("content")
                 }
@@ -86,10 +87,10 @@ pub async fn get_channel(
     });
 
     // map channel content to v3
-    let initial_content_v3 = initial_content.map(|content| content.v3());
+    let initial_content_v4 = initial_content.map(|content| content.v4());
 
     // send initial content to subscribers
-    match tx.send(initial_content_v3) {
+    match tx.send(initial_content_v4) {
         Ok(len) => {
             tracing::debug!("sent {} to {} receivers", channel, len);
         }
@@ -198,7 +199,7 @@ pub async fn set_channel(
     {
         return (
             StatusCode::BAD_REQUEST,
-            json!({ "status": false, "error": "invalid channel name, must be ascii alphabetic" })
+            json!({ "status": false, "error": "invalid channel name, must be ASCII alphabetic" })
                 .to_string(),
         );
     }
@@ -208,15 +209,14 @@ pub async fn set_channel(
         return internal_error(anyhow!(err));
     }
 
-    // check if the user is an admin or the channel is owned by the user
-    let address_key = address_key(&claims.address);
+    // Check if the user is an admin or the channel is owned by the user
+    let claims_address_key = address_key(&claims.address);
     let owned: bool = if claims.address.is_zero() {
-        // TODO: currently admin can set any channel, investigate if we want this or not
-        true // if admin, always set owned to true
+        true // Admins can set any channel
     } else {
         match state.pool.get().await {
             Ok(mut conn) => match conn
-                .sismember::<&str, &str, bool>(&address_key, &channel)
+                .sismember::<&str, &str, bool>(&claims_address_key, &channel)
                 .await
             {
                 Ok(owned) => owned,
@@ -232,7 +232,7 @@ pub async fn set_channel(
         }
     };
 
-    // check if channel already exists
+    // Check if channel already exists
     let channel_key = channel_key(&channel);
     let exists: bool = match state.pool.get().await {
         Ok(mut conn) => match conn.exists::<&str, bool>(&channel_key).await {
@@ -248,6 +248,7 @@ pub async fn set_channel(
         }
     };
 
+    // Check if the channel exists and is not owned
     if exists && !owned {
         return (
             StatusCode::BAD_REQUEST,
@@ -255,6 +256,7 @@ pub async fn set_channel(
         );
     }
 
+    // Validate the incoming channel content
     if let Err(err) = validate_channel_content(&channel_content) {
         tracing::debug!("Error validating channel content: {:?}", err);
         return (
@@ -263,36 +265,112 @@ pub async fn set_channel(
         );
     }
 
-    match state.pool.get().await {
-        Ok(mut conn) => match conn.sadd::<&str, &str, ()>(&address_key, &channel).await {
-            Ok(_) => match conn
-                .set::<&str, String, ()>(
-                    &channel_key,
-                    serde_json::to_string(&channel_content).unwrap(), // Always write new format
-                )
-                .await
-            {
-                Ok(_) => {
-                    state.changes.broadcast(&channel, channel_content).await;
-                    (StatusCode::OK, json!({ "status": true }).to_string())
-                }
-                Err(err) => {
-                    tracing::error!("Error setting content for channel {}: {:?}", channel, err);
-                    internal_error(anyhow!(err))
-                }
-            },
+    // Fetch the existing channel content from Redis (if it exists)
+    let existing_content: Option<ChannelContent> = match state.pool.get().await {
+        Ok(mut conn) => match conn.get::<&str, String>(&channel_key).await {
+            Ok(content_json) => serde_json::from_str(&content_json).ok(),
+            Err(_) => None,
+        },
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    };
+
+    // Extract `shared_with` from both the input `channel_content` and
+    // `existing_content`
+    let new_shared_with: HashSet<Address> = match &channel_content {
+        ChannelContent::ChannelContentV4 { shared_with, .. } => {
+            shared_with.iter().cloned().collect()
+        }
+        _ => HashSet::new(),
+    };
+
+    let existing_shared_with: HashSet<Address> = match existing_content {
+        Some(ChannelContent::ChannelContentV4 { shared_with, .. }) => {
+            shared_with.into_iter().collect()
+        }
+        _ => HashSet::new(),
+    };
+
+    // Determine addresses to add and remove
+    let to_add = new_shared_with
+        .difference(&existing_shared_with)
+        .cloned()
+        .collect::<Vec<_>>();
+    let to_remove = existing_shared_with
+        .difference(&new_shared_with)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // Reuse a single connection to update Redis
+    let mut conn = match state.pool.get().await {
+        Ok(conn) => conn,
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    };
+
+    // Add new editors by updating `address_key` for each added address
+    for editor_address in &to_add {
+        let editor_key = address_key(editor_address);
+        if let Err(err) = conn.sadd::<&str, &str, ()>(&editor_key, &channel).await {
+            tracing::error!(
+                "Error adding channel to address set {}: {:?}",
+                editor_address,
+                err
+            );
+            return internal_error(anyhow!(err));
+        }
+    }
+
+    // Remove old editors by updating `address_key` for each removed address
+    for editor_address in &to_remove {
+        let editor_key = address_key(editor_address);
+        if let Err(err) = conn.srem::<&str, &str, ()>(&editor_key, &channel).await {
+            tracing::error!(
+                "Error removing channel from address set {}: {:?}",
+                editor_address,
+                err
+            );
+            return internal_error(anyhow!(err));
+        }
+    }
+
+    tracing::debug!(
+        "Updated channel content for channel {}",
+        serde_json::to_string(&channel_content).unwrap()
+    );
+
+    // Finalize by updating the content in Redis
+    match conn
+        .sadd::<&str, &str, ()>(&claims_address_key, &channel)
+        .await
+    {
+        Ok(_) => match conn
+            .set::<&str, String, ()>(
+                &channel_key,
+                serde_json::to_string(&channel_content).unwrap(), // Always write new format
+            )
+            .await
+        {
+            Ok(_) => {
+                state.changes.broadcast(&channel, channel_content).await;
+                (StatusCode::OK, json!({ "status": true }).to_string())
+            }
             Err(err) => {
-                tracing::error!(
-                    "Error adding channel {} to owner set {}: {:?}",
-                    channel,
-                    claims.address,
-                    err
-                );
+                tracing::error!("Error setting content for channel {}: {:?}", channel, err);
                 internal_error(anyhow!(err))
             }
         },
         Err(err) => {
-            tracing::error!("Error getting connection from pool: {:?}", err);
+            tracing::error!(
+                "Error adding channel {} to owner set {}: {:?}",
+                channel,
+                claims.address,
+                err
+            );
             internal_error(anyhow!(err))
         }
     }
