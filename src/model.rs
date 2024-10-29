@@ -106,14 +106,12 @@ impl ChannelContent {
                 items,
                 display,
                 status,
-            } => {
-                ChannelContent::ChannelContentV4 {
-                    items,
-                    display,
-                    shared_with: default_shared_with(),
-                    status,
-                }
-            }
+            } => ChannelContent::ChannelContentV4 {
+                items,
+                display,
+                shared_with: default_shared_with(),
+                status,
+            },
             content @ ChannelContent::ChannelContentV4 { .. } => content,
         }
     }

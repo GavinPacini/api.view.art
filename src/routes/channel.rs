@@ -277,20 +277,31 @@ pub async fn set_channel(
         }
     };
 
-    // Extract `shared_with` from both the input `channel_content` and `existing_content`
+    // Extract `shared_with` from both the input `channel_content` and
+    // `existing_content`
     let new_shared_with: HashSet<Address> = match &channel_content {
-        ChannelContent::ChannelContentV4 { shared_with, .. } => shared_with.iter().cloned().collect(),
+        ChannelContent::ChannelContentV4 { shared_with, .. } => {
+            shared_with.iter().cloned().collect()
+        }
         _ => HashSet::new(),
     };
 
     let existing_shared_with: HashSet<Address> = match existing_content {
-        Some(ChannelContent::ChannelContentV4 { shared_with, .. }) => shared_with.into_iter().collect(),
+        Some(ChannelContent::ChannelContentV4 { shared_with, .. }) => {
+            shared_with.into_iter().collect()
+        }
         _ => HashSet::new(),
     };
 
     // Determine addresses to add and remove
-    let to_add = new_shared_with.difference(&existing_shared_with).cloned().collect::<Vec<_>>();
-    let to_remove = existing_shared_with.difference(&new_shared_with).cloned().collect::<Vec<_>>();
+    let to_add = new_shared_with
+        .difference(&existing_shared_with)
+        .cloned()
+        .collect::<Vec<_>>();
+    let to_remove = existing_shared_with
+        .difference(&new_shared_with)
+        .cloned()
+        .collect::<Vec<_>>();
 
     // Reuse a single connection to update Redis
     let mut conn = match state.pool.get().await {
@@ -305,7 +316,11 @@ pub async fn set_channel(
     for editor_address in &to_add {
         let editor_key = address_key(editor_address);
         if let Err(err) = conn.sadd::<&str, &str, ()>(&editor_key, &channel).await {
-            tracing::error!("Error adding channel to address set {}: {:?}", editor_address, err);
+            tracing::error!(
+                "Error adding channel to address set {}: {:?}",
+                editor_address,
+                err
+            );
             return internal_error(anyhow!(err));
         }
     }
@@ -314,15 +329,25 @@ pub async fn set_channel(
     for editor_address in &to_remove {
         let editor_key = address_key(editor_address);
         if let Err(err) = conn.srem::<&str, &str, ()>(&editor_key, &channel).await {
-            tracing::error!("Error removing channel from address set {}: {:?}", editor_address, err);
+            tracing::error!(
+                "Error removing channel from address set {}: {:?}",
+                editor_address,
+                err
+            );
             return internal_error(anyhow!(err));
         }
     }
 
-    tracing::debug!("Updated channel content for channel {}", serde_json::to_string(&channel_content).unwrap());
+    tracing::debug!(
+        "Updated channel content for channel {}",
+        serde_json::to_string(&channel_content).unwrap()
+    );
 
     // Finalize by updating the content in Redis
-    match conn.sadd::<&str, &str, ()>(&claims_address_key, &channel).await {
+    match conn
+        .sadd::<&str, &str, ()>(&claims_address_key, &channel)
+        .await
+    {
         Ok(_) => match conn
             .set::<&str, String, ()>(
                 &channel_key,
