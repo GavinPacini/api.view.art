@@ -9,6 +9,7 @@ use {
         },
         AppState,
     },
+    alloy::primitives::Address,
     anyhow::{anyhow, Result},
     axum::{
         extract::{Path, State},
@@ -209,13 +210,13 @@ pub async fn set_channel(
     }
 
     // Check if the user is an admin or the channel is owned by the user
-    let address_key = address_key(&claims.address);
+    let claims_address_key = address_key(&claims.address);
     let owned: bool = if claims.address.is_zero() {
         true // Admins can set any channel
     } else {
         match state.pool.get().await {
             Ok(mut conn) => match conn
-                .sismember::<&str, &str, bool>(&address_key, &channel)
+                .sismember::<&str, &str, bool>(&claims_address_key, &channel)
                 .await
             {
                 Ok(owned) => owned,
@@ -247,6 +248,7 @@ pub async fn set_channel(
         }
     };
 
+    // Check if the channel exists and is not owned
     if exists && !owned {
         return (
             StatusCode::BAD_REQUEST,
@@ -254,6 +256,7 @@ pub async fn set_channel(
         );
     }
 
+    // Validate the incoming channel content
     if let Err(err) = validate_channel_content(&channel_content) {
         tracing::debug!("Error validating channel content: {:?}", err);
         return (
@@ -262,20 +265,11 @@ pub async fn set_channel(
         );
     }
 
-    // Extract the new editor addresses from the `ChannelContent` by borrowing `shared_with`
-    let editor_addresses = match channel_content {
-        ChannelContent::ChannelContentV4 { ref shared_with, .. } => shared_with.clone(),
-        _ => vec![],
-    };
-
-    // Retrieve Redis connection from pool and get the existing shared_with list
-    let existing_shared_with: Vec<String> = match state.pool.get().await {
-        Ok(mut conn) => match conn.smembers(&channel_key).await {
-            Ok(shared_with) => shared_with,
-            Err(err) => {
-                tracing::error!("Error fetching shared_with for channel {}: {:?}", channel_key, err);
-                return internal_error(anyhow!(err));
-            }
+    // Fetch the existing channel content from Redis (if it exists)
+    let existing_content: Option<ChannelContent> = match state.pool.get().await {
+        Ok(mut conn) => match conn.get::<&str, String>(&channel_key).await {
+            Ok(content_json) => serde_json::from_str(&content_json).ok(),
+            Err(_) => None,
         },
         Err(err) => {
             tracing::error!("Error getting connection from pool: {:?}", err);
@@ -283,14 +277,22 @@ pub async fn set_channel(
         }
     };
 
-    // Determine editors to add and remove
-    let existing_set: HashSet<_> = existing_shared_with.iter().cloned().collect();
-    let new_set: HashSet<_> = editor_addresses.iter().cloned().collect();
+    // Extract `shared_with` from both the input `channel_content` and `existing_content`
+    let new_shared_with: HashSet<Address> = match &channel_content {
+        ChannelContent::ChannelContentV4 { shared_with, .. } => shared_with.iter().cloned().collect(),
+        _ => HashSet::new(),
+    };
 
-    let to_add: Vec<_> = new_set.difference(&existing_set).cloned().collect();
-    let to_remove: Vec<_> = existing_set.difference(&new_set).cloned().collect();
+    let existing_shared_with: HashSet<Address> = match existing_content {
+        Some(ChannelContent::ChannelContentV4 { shared_with, .. }) => shared_with.into_iter().collect(),
+        _ => HashSet::new(),
+    };
 
-    // Reuse a single connection to add and remove editors
+    // Determine addresses to add and remove
+    let to_add = new_shared_with.difference(&existing_shared_with).cloned().collect::<Vec<_>>();
+    let to_remove = existing_shared_with.difference(&new_shared_with).cloned().collect::<Vec<_>>();
+
+    // Reuse a single connection to update Redis
     let mut conn = match state.pool.get().await {
         Ok(conn) => conn,
         Err(err) => {
@@ -299,24 +301,28 @@ pub async fn set_channel(
         }
     };
 
-    // Add new editors
+    // Add new editors by updating `address_key` for each added address
     for editor_address in &to_add {
-        if let Err(err) = conn.sadd::<&str, &str, ()>(&channel_key, editor_address).await {
-            tracing::error!("Error adding editor {} to channel {}: {:?}", editor_address, channel, err);
+        let editor_key = address_key(editor_address);
+        if let Err(err) = conn.sadd::<&str, &str, ()>(&editor_key, &channel).await {
+            tracing::error!("Error adding channel to address set {}: {:?}", editor_address, err);
             return internal_error(anyhow!(err));
         }
     }
 
-    // Remove old editors
+    // Remove old editors by updating `address_key` for each removed address
     for editor_address in &to_remove {
-        if let Err(err) = conn.srem::<&str, &str, ()>(&channel_key, editor_address).await {
-            tracing::error!("Error removing editor {} from channel {}: {:?}", editor_address, channel, err);
+        let editor_key = address_key(editor_address);
+        if let Err(err) = conn.srem::<&str, &str, ()>(&editor_key, &channel).await {
+            tracing::error!("Error removing channel from address set {}: {:?}", editor_address, err);
             return internal_error(anyhow!(err));
         }
     }
+
+    tracing::debug!("Updated channel content for channel {}", serde_json::to_string(&channel_content).unwrap());
 
     // Finalize by updating the content in Redis
-    match conn.sadd::<&str, &str, ()>(&address_key, &channel).await {
+    match conn.sadd::<&str, &str, ()>(&claims_address_key, &channel).await {
         Ok(_) => match conn
             .set::<&str, String, ()>(
                 &channel_key,
