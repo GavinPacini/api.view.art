@@ -45,7 +45,7 @@ pub enum ChannelContent {
         #[serde(default = "default_display")]
         display: Display,
         #[serde(default = "default_shared_with")]
-        shared_with: Vec<Address>,
+        shared_with: Vec<String>,
         status: Status,
     },
     ChannelContentV3 {
@@ -121,7 +121,7 @@ impl ChannelContent {
 
 // ChannelContentV4
 
-fn default_shared_with() -> Vec<Address> {
+fn default_shared_with() -> Vec<String> {
     vec![]
 }
 

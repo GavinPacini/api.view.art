@@ -198,7 +198,7 @@ pub async fn set_channel(
     {
         return (
             StatusCode::BAD_REQUEST,
-            json!({ "status": false, "error": "invalid channel name, must be ascii alphabetic" })
+            json!({ "status": false, "error": "invalid channel name, must be ASCII alphabetic" })
                 .to_string(),
         );
     }
@@ -208,11 +208,10 @@ pub async fn set_channel(
         return internal_error(anyhow!(err));
     }
 
-    // check if the user is an admin or the channel is owned by the user
+    // Check if the user is an admin or the channel is owned by the user
     let address_key = address_key(&claims.address);
     let owned: bool = if claims.address.is_zero() {
-        // TODO: currently admin can set any channel, investigate if we want this or not
-        true // if admin, always set owned to true
+        true // Admins can set any channel
     } else {
         match state.pool.get().await {
             Ok(mut conn) => match conn
@@ -232,7 +231,7 @@ pub async fn set_channel(
         }
     };
 
-    // check if channel already exists
+    // Check if channel already exists
     let channel_key = channel_key(&channel);
     let exists: bool = match state.pool.get().await {
         Ok(mut conn) => match conn.exists::<&str, bool>(&channel_key).await {
@@ -263,19 +262,18 @@ pub async fn set_channel(
         );
     }
 
-    // This block updates the Redis set of editor addresses for a specific channel. 
-    // It first retrieves the current list of editors from Redis and compares it with 
-    // the new list of editor addresses provided in the channel content. 
-    // It determines which addresses need to be added or removed and performs 
-    // the necessary updates in the Redis database, handling any errors that may occur 
-    // during the process.
+    // Extract the new editor addresses from the `ChannelContent` by borrowing `shared_with`
+    let editor_addresses = match channel_content {
+        ChannelContent::ChannelContentV4 { ref shared_with, .. } => shared_with.clone(),
+        _ => vec![],
+    };
 
-    let editor_addresses = channel_content.shared_with.clone(); 
-    let existing_editors: Vec<String> = match state.pool.get().await {
-        Ok(mut conn) => match conn.smembers::<&str, String>(&channel_key).await {
+    // Retrieve Redis connection from pool and get the existing shared_with list
+    let existing_shared_with: Vec<String> = match state.pool.get().await {
+        Ok(mut conn) => match conn.smembers(&channel_key).await {
             Ok(shared_with) => shared_with,
             Err(err) => {
-                tracing::error!("Error fetching existing editors: {:?}", err);
+                tracing::error!("Error fetching shared_with for channel {}: {:?}", channel_key, err);
                 return internal_error(anyhow!(err));
             }
         },
@@ -286,58 +284,62 @@ pub async fn set_channel(
     };
 
     // Determine editors to add and remove
-    let existing_set: HashSet<_> = existing_editors.iter().cloned().collect();
+    let existing_set: HashSet<_> = existing_shared_with.iter().cloned().collect();
     let new_set: HashSet<_> = editor_addresses.iter().cloned().collect();
 
-    let to_add: Vec<_> = new_set.difference(&existing_set).collect();
-    let to_remove: Vec<_> = existing_set.difference(&new_set).collect();
+    let to_add: Vec<_> = new_set.difference(&existing_set).cloned().collect();
+    let to_remove: Vec<_> = existing_set.difference(&new_set).cloned().collect();
+
+    // Reuse a single connection to add and remove editors
+    let mut conn = match state.pool.get().await {
+        Ok(conn) => conn,
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    };
 
     // Add new editors
-    for editor_address in to_add {
-        if let Err(err) = state.pool.get().await?.sadd::<&str, &str, ()>(&channel_key, editor_address).await {
+    for editor_address in &to_add {
+        if let Err(err) = conn.sadd::<&str, &str, ()>(&channel_key, editor_address).await {
             tracing::error!("Error adding editor {} to channel {}: {:?}", editor_address, channel, err);
             return internal_error(anyhow!(err));
         }
     }
 
-    // Remove editors
-    for editor_address in to_remove {
-        if let Err(err) = state.pool.get().await?.srem::<&str, &str, ()>(&channel_key, editor_address).await {
+    // Remove old editors
+    for editor_address in &to_remove {
+        if let Err(err) = conn.srem::<&str, &str, ()>(&channel_key, editor_address).await {
             tracing::error!("Error removing editor {} from channel {}: {:?}", editor_address, channel, err);
             return internal_error(anyhow!(err));
         }
     }
 
-    match state.pool.get().await {
-        Ok(mut conn) => match conn.sadd::<&str, &str, ()>(&address_key, &channel).await {
-            Ok(_) => match conn
-                .set::<&str, String, ()>(
-                    &channel_key,
-                    serde_json::to_string(&channel_content).unwrap(), // Always write new format
-                )
-                .await
-            {
-                Ok(_) => {
-                    state.changes.broadcast(&channel, channel_content).await;
-                    (StatusCode::OK, json!({ "status": true }).to_string())
-                }
-                Err(err) => {
-                    tracing::error!("Error setting content for channel {}: {:?}", channel, err);
-                    internal_error(anyhow!(err))
-                }
-            },
+    // Finalize by updating the content in Redis
+    match conn.sadd::<&str, &str, ()>(&address_key, &channel).await {
+        Ok(_) => match conn
+            .set::<&str, String, ()>(
+                &channel_key,
+                serde_json::to_string(&channel_content).unwrap(), // Always write new format
+            )
+            .await
+        {
+            Ok(_) => {
+                state.changes.broadcast(&channel, channel_content).await;
+                (StatusCode::OK, json!({ "status": true }).to_string())
+            }
             Err(err) => {
-                tracing::error!(
-                    "Error adding channel {} to owner set {}: {:?}",
-                    channel,
-                    claims.address,
-                    err
-                );
+                tracing::error!("Error setting content for channel {}: {:?}", channel, err);
                 internal_error(anyhow!(err))
             }
         },
         Err(err) => {
-            tracing::error!("Error getting connection from pool: {:?}", err);
+            tracing::error!(
+                "Error adding channel {} to owner set {}: {:?}",
+                channel,
+                claims.address,
+                err
+            );
             internal_error(anyhow!(err))
         }
     }
