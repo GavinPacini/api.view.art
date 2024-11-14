@@ -28,7 +28,6 @@ use {
     serde::{Deserialize, Serialize},
     serde_json::json,
     siwe::{generate_nonce, VerificationError},
-    std::env::var,
 };
 
 /// 1 hour
@@ -43,7 +42,7 @@ struct PrivyClaims {
 }
 
 impl PrivyClaims {
-    fn valid(&self, app_id: &str) -> Result<()> {
+    fn valid(&self, app_id: &str) -> Result<(), anyhow::Error> {
         if self.app_id != app_id {
             return Err(anyhow!("aud claim must be your Privy App ID."));
         }
@@ -108,28 +107,42 @@ pub async fn get_nonce(
 }
 
 pub async fn verify_privy_auth(
-    state: State<AppState>,
-    TypedHeader(Authorization(Bearer { token })) : TypedHeader<Authorization<Bearer>>,
-) -> impl IntoResponse {
-    let args = Args::load().await;
-    let privy_app_id = String::from(args.privy_app_id).parse()?;
-    let privy_public_key = String::from(args.privy_public_key).parse()?.replace("\\n", "\n");
+    auth_header: TypedHeader<Authorization<Bearer>>,
+) -> Result<impl IntoResponse, StatusCode> {
+
+    tracing::info!("entering verify_privy_auth");
+    
+    let args = Args::load().await.map_err(|err| {
+        tracing::error!("Error loading args: {:?}", err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let privy_app_id = String::from(args.privy_app_id);  
+    let privy_public_key = String::from(args.privy_public_key).replace("\\n", "\n");
+
+    let token = auth_header.token();
+
+    // Create and configure the Validation instance
+    let mut validation = Validation::new(jsonwebtoken::Algorithm::HS256);
+    validation.set_issuer(&["privy.io"]);
+    validation.set_audience(&[privy_app_id]);
 
     let decoded = jsonwebtoken::decode::<Claims>(
-    &token,
-    &DecodingKey::from_secret(privy_public_key.as_bytes()),
-    &Validation::new(jsonwebtoken::Algorithm::HS256)
-        .set_issuer("privy.io")
-            .set_audience(&privy_app_id),
-        )
-        .map_err(|err| {
-            tracing::error!("JWT verification error: {:?}", err);
-            StatusCode::UNAUTHORIZED
-})?;
+        &token,
+        &DecodingKey::from_secret(privy_public_key.as_bytes()),
+        &validation,
+    )
+    .map_err(|err| {
+        tracing::error!("JWT verification error: {:?}", err);
+        StatusCode::UNAUTHORIZED
+    })?;
 
     // Log the decoded claims
     tracing::info!("Decoded JWT claims: {:?}", decoded.claims);
-}   
+
+    // Return an appropriate response
+    Ok(StatusCode::OK) // or replace with an appropriate response
+}
 
 pub async fn verify_auth(
     state: State<AppState>,
