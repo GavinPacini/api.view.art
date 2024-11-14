@@ -121,6 +121,7 @@ pub async fn verify_privy_auth(
 
     let privy_app_id = String::from(args.privy_app_id);  
     let privy_public_key = String::from(args.privy_public_key).replace("\\n", "\n");
+    let privy_app_secret = String::from(args.privy_app_secret).replace("\\n", "\n");
 
     let token = auth_header.token();
 
@@ -152,6 +153,38 @@ pub async fn verify_privy_auth(
 
     // Log the decoded claims if valid
     tracing::info!("Decoded and validated JWT claims: {:?}", claims);
+
+    let user_response: UserResponse = reqwest::Client::new()
+        .get(format!("https://auth.privy.io/api/v1/users/{}", token))
+        .header("privy-app-id", privy_app_id.clone())
+        .basic_auth(privy_app_id.clone(), Some(privy_app_secret.clone()))
+        .send()
+        .await
+        .map_err(|err| {
+            tracing::error!("Error making request to Privy API: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .json()
+        .await
+        .map_err(|err| {
+            tracing::error!("Error parsing Privy API response: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Log the user object
+    tracing::info!("Received user object from Privy API: {:?}", user_response);
+
+    let linked_wallet_address = user_response.linked_accounts.iter()
+        .find(|account| account["type"] == "wallet")
+        .and_then(|account| account["address"].as_str())
+        .map(String::from)
+        .ok_or_else(|| {
+            tracing::error!("No linked wallet address found in user response");
+            StatusCode::UNAUTHORIZED
+        })?;
+
+    // TODO: check if the linked wallet address is the same as the one in the request
+    tracing::info!("Linked wallet address: {:?}", linked_wallet_address);
 
     Ok(StatusCode::OK) // Return an appropriate response
 }
