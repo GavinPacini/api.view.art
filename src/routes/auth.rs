@@ -35,9 +35,13 @@ const NONCE_EXPIRY: u64 = 60 * 60;
 
 #[derive(Debug, Deserialize)]
 struct PrivyClaims {
+    #[serde(rename = "aud")]
     app_id: String,
+    #[serde(rename = "exp")]
     expiration: usize,
+    #[serde(rename = "iss")]
     issuer: String,
+    #[serde(rename = "sub")]
     user_id: String,
 }
 
@@ -109,8 +113,6 @@ pub async fn get_nonce(
 pub async fn verify_privy_auth(
     auth_header: TypedHeader<Authorization<Bearer>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-
-    tracing::info!("entering verify_privy_auth");
     
     let args = Args::load().await.map_err(|err| {
         tracing::error!("Error loading args: {:?}", err);
@@ -123,13 +125,16 @@ pub async fn verify_privy_auth(
     let token = auth_header.token();
 
     // Create and configure the Validation instance
-    let mut validation = Validation::new(jsonwebtoken::Algorithm::HS256);
-    validation.set_issuer(&["privy.io"]);
-    validation.set_audience(&[privy_app_id]);
+    let validation = Validation::new(jsonwebtoken::Algorithm::ES256);
 
-    let decoded = jsonwebtoken::decode::<Claims>(
+    tracing::info!("validation: {:?}", validation);
+
+    let decoded = jsonwebtoken::decode::<PrivyClaims>(
         &token,
-        &DecodingKey::from_secret(privy_public_key.as_bytes()),
+        &DecodingKey::from_ec_pem(privy_public_key.as_bytes()).map_err(|err| {
+            tracing::error!("Failed to parse EC key: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?,
         &validation,
     )
     .map_err(|err| {
@@ -137,11 +142,18 @@ pub async fn verify_privy_auth(
         StatusCode::UNAUTHORIZED
     })?;
 
-    // Log the decoded claims
-    tracing::info!("Decoded JWT claims: {:?}", decoded.claims);
+    let claims = decoded.claims;
 
-    // Return an appropriate response
-    Ok(StatusCode::OK) // or replace with an appropriate response
+    // Call the `valid` method to validate the claims
+    claims.valid(&privy_app_id).map_err(|err| {
+        tracing::error!("Claims validation error: {:?}", err);
+        StatusCode::UNAUTHORIZED
+    })?;
+
+    // Log the decoded claims if valid
+    tracing::info!("Decoded and validated JWT claims: {:?}", claims);
+
+    Ok(StatusCode::OK) // Return an appropriate response
 }
 
 pub async fn verify_auth(
