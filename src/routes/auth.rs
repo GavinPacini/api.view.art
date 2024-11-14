@@ -1,5 +1,6 @@
 use {
     crate::{
+        args::Args,
         model::{GetAuth, VerifyAuth},
         routes::internal_error,
         utils::keys::nonce_key,
@@ -27,10 +28,34 @@ use {
     serde::{Deserialize, Serialize},
     serde_json::json,
     siwe::{generate_nonce, VerificationError},
+    std::env::var,
 };
 
 /// 1 hour
 const NONCE_EXPIRY: u64 = 60 * 60;
+
+#[derive(Debug, Deserialize)]
+struct PrivyClaims {
+    app_id: String,
+    expiration: usize,
+    issuer: String,
+    user_id: String,
+}
+
+impl PrivyClaims {
+    fn valid(&self, app_id: &str) -> Result<()> {
+        if self.app_id != app_id {
+            return Err(anyhow!("aud claim must be your Privy App ID."));
+        }
+        if self.issuer != "privy.io" {
+            return Err(anyhow!("iss claim must be 'privy.io'"));
+        }
+        if self.expiration < Utc::now().timestamp() as usize {
+            return Err(anyhow!("Token is expired."));
+        }
+        Ok(())
+    }
+}
 
 pub async fn get_nonce(
     state: State<AppState>,
@@ -81,6 +106,30 @@ pub async fn get_nonce(
         }
     }
 }
+
+pub async fn verify_privy_auth(
+    state: State<AppState>,
+    TypedHeader(Authorization(Bearer { token })) : TypedHeader<Authorization<Bearer>>,
+) -> impl IntoResponse {
+    let args = Args::load().await;
+    let privy_app_id = String::from(args.privy_app_id).parse()?;
+    let privy_public_key = String::from(args.privy_public_key).parse()?.replace("\\n", "\n");
+
+    let decoded = jsonwebtoken::decode::<Claims>(
+    &token,
+    &DecodingKey::from_secret(privy_public_key.as_bytes()),
+    &Validation::new(jsonwebtoken::Algorithm::HS256)
+        .set_issuer("privy.io")
+            .set_audience(&privy_app_id),
+        )
+        .map_err(|err| {
+            tracing::error!("JWT verification error: {:?}", err);
+            StatusCode::UNAUTHORIZED
+})?;
+
+    // Log the decoded claims
+    tracing::info!("Decoded JWT claims: {:?}", decoded.claims);
+}   
 
 pub async fn verify_auth(
     state: State<AppState>,

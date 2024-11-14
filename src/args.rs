@@ -24,6 +24,14 @@ pub struct Args {
     #[arg(long, env)]
     pub jwt_secret: SecretString,
 
+    /// Privy App ID
+    #[arg(long, env)]
+    pub privy_app_id: SecretString,
+
+    /// Privy Public Key
+    #[arg(long, env)]
+    pub privy_public_key: SecretString,
+
     /// Optional list of extra allowed origins
     #[arg(long, env, use_value_delimiter(true), value_delimiter(','))]
     pub allowed_origins: Option<Vec<HeaderValue>>,
