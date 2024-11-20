@@ -28,6 +28,10 @@ pub struct Args {
     #[arg(long, env)]
     pub privy_app_id: SecretString,
 
+    /// Privy App Secret
+    #[arg(long, env)]
+    pub privy_app_secret: SecretString,
+
     /// Privy Public Key
     #[arg(long, env)]
     pub privy_public_key: SecretString,

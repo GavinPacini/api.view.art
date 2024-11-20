@@ -143,6 +143,7 @@ fn app(allowed_origins: Vec<HeaderValue>, state: AppState) -> Router {
             .layer(Extension(keys))
             .layer(
                 CorsLayer::new()
+                    .allow_credentials(true)
                     .allow_origin(allowed_origins)
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                     .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),

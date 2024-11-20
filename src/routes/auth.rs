@@ -18,6 +18,7 @@ use {
         RequestPartsExt,
     },
     axum_extra::{
+        extract::cookie::{Cookie, CookieJar},
         headers::{authorization::Bearer, Authorization},
         TypedHeader,
     },
@@ -34,19 +35,47 @@ use {
 const NONCE_EXPIRY: u64 = 60 * 60;
 
 #[derive(Debug, Deserialize)]
-struct PrivyClaims {
-    #[serde(rename = "aud")]
-    app_id: String,
-    #[serde(rename = "exp")]
-    expiration: usize,
+pub struct PrivyClaims {
+    #[serde(rename = "cr")]
+    pub cr: String, // Assuming `cr` is a string, adjust if necessary
+
+    #[serde(rename = "linked_accounts")]
+    pub linked_accounts: Vec<LinkedAccount>, // We'll define `LinkedAccount` below
+
     #[serde(rename = "iss")]
-    issuer: String,
+    pub issuer: String,
+
+    #[serde(rename = "iat")]
+    pub issued_at: usize, // Issued at timestamp
+
+    #[serde(rename = "aud")]
+    pub app_id: String,
+
     #[serde(rename = "sub")]
-    user_id: String,
+    pub user_id: String,
+
+    #[serde(rename = "exp")]
+    pub expiration: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LinkedAccount {
+    #[serde(rename = "type")]
+    pub account_type: String,
+
+    pub address: String,
+
+    #[serde(rename = "chain_type")]
+    pub chain_type: String,
+
+    #[serde(rename = "wallet_client_type")]
+    pub wallet_client_type: String,
+
+    pub lv: usize,
 }
 
 impl PrivyClaims {
-    fn valid(&self, app_id: &str) -> Result<(), anyhow::Error> {
+    pub fn valid(&self, app_id: &str) -> Result<(), anyhow::Error> {
         if self.app_id != app_id {
             return Err(anyhow!("aud claim must be your Privy App ID."));
         }
@@ -56,6 +85,13 @@ impl PrivyClaims {
         if self.expiration < Utc::now().timestamp() as usize {
             return Err(anyhow!("Token is expired."));
         }
+        if self.issued_at > Utc::now().timestamp() as usize {
+            return Err(anyhow!("Token is issued in the future."));
+        }
+        if self.linked_accounts.is_empty() {
+            return Err(anyhow!("No linked accounts found."));
+        }
+
         Ok(())
     }
 }
@@ -111,9 +147,8 @@ pub async fn get_nonce(
 }
 
 pub async fn verify_privy_auth(
-    auth_header: TypedHeader<Authorization<Bearer>>,
+    cookies: CookieJar,
 ) -> Result<impl IntoResponse, StatusCode> {
-    
     let args = Args::load().await.map_err(|err| {
         tracing::error!("Error loading args: {:?}", err);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -121,14 +156,19 @@ pub async fn verify_privy_auth(
 
     let privy_app_id = String::from(args.privy_app_id);  
     let privy_public_key = String::from(args.privy_public_key).replace("\\n", "\n");
-    let privy_app_secret = String::from(args.privy_app_secret).replace("\\n", "\n");
 
-    let token = auth_header.token();
+    tracing::info!("Preparing to verify privy auth");
+
+    // Retrieve the "privy-id-token" cookie
+    let token = cookies.get("privy-id-token").map(|cookie| cookie.value()).ok_or_else(|| {
+        tracing::error!("Missing privy-id-token");
+        StatusCode::UNAUTHORIZED
+    })?;
 
     // Create and configure the Validation instance
     let validation = Validation::new(jsonwebtoken::Algorithm::ES256);
 
-    tracing::info!("validation: {:?}", validation);
+    tracing::info!("Validation: {:?}", validation);
 
     let decoded = jsonwebtoken::decode::<PrivyClaims>(
         &token,
@@ -154,39 +194,12 @@ pub async fn verify_privy_auth(
     // Log the decoded claims if valid
     tracing::info!("Decoded and validated JWT claims: {:?}", claims);
 
-    let user_response: UserResponse = reqwest::Client::new()
-        .get(format!("https://auth.privy.io/api/v1/users/{}", token))
-        .header("privy-app-id", privy_app_id.clone())
-        .basic_auth(privy_app_id.clone(), Some(privy_app_secret.clone()))
-        .send()
-        .await
-        .map_err(|err| {
-            tracing::error!("Error making request to Privy API: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .json()
-        .await
-        .map_err(|err| {
-            tracing::error!("Error parsing Privy API response: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    // Log linked accounts
+    for account in &claims.linked_accounts {
+        tracing::info!("Linked account: {:?}", account);
+    }
 
-    // Log the user object
-    tracing::info!("Received user object from Privy API: {:?}", user_response);
-
-    let linked_wallet_address = user_response.linked_accounts.iter()
-        .find(|account| account["type"] == "wallet")
-        .and_then(|account| account["address"].as_str())
-        .map(String::from)
-        .ok_or_else(|| {
-            tracing::error!("No linked wallet address found in user response");
-            StatusCode::UNAUTHORIZED
-        })?;
-
-    // TODO: check if the linked wallet address is the same as the one in the request
-    tracing::info!("Linked wallet address: {:?}", linked_wallet_address);
-
-    Ok(StatusCode::OK) // Return an appropriate response
+    Ok(StatusCode::OK)
 }
 
 pub async fn verify_auth(
