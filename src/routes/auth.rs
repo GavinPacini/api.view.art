@@ -26,7 +26,7 @@ use {
     chrono::Utc,
     erc6492::verify_signature,
     jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation},
-    serde::{Deserialize, Serialize},
+    serde::{Deserialize, Deserializer, Serialize},
     serde_json::json,
     siwe::{generate_nonce, VerificationError},
 };
@@ -37,16 +37,15 @@ const NONCE_EXPIRY: u64 = 60 * 60;
 #[derive(Debug, Deserialize)]
 pub struct PrivyClaims {
     #[serde(rename = "cr")]
-    pub cr: String, // Assuming `cr` is a string, adjust if necessary
+    pub cr: String,
 
-    #[serde(rename = "linked_accounts")]
-    pub linked_accounts: Vec<LinkedAccount>, // We'll define `LinkedAccount` below
-
+    #[serde(rename = "linked_accounts", deserialize_with = "deserialize_linked_accounts")]
+    pub linked_accounts: Vec<LinkedAccount>,
     #[serde(rename = "iss")]
     pub issuer: String,
 
     #[serde(rename = "iat")]
-    pub issued_at: usize, // Issued at timestamp
+    pub issued_at: usize,
 
     #[serde(rename = "aud")]
     pub app_id: String,
@@ -72,6 +71,19 @@ pub struct LinkedAccount {
     pub wallet_client_type: String,
 
     pub lv: usize,
+}
+
+// Custom deserializer for `linked_accounts`
+fn deserialize_linked_accounts<'de, D>(
+    deserializer: D,
+) -> Result<Vec<LinkedAccount>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // Deserialize the field as a string
+    let linked_accounts_str = String::deserialize(deserializer)?;
+    // Parse the string as JSON to get a Vec<LinkedAccount>
+    serde_json::from_str(&linked_accounts_str).map_err(serde::de::Error::custom)
 }
 
 impl PrivyClaims {
