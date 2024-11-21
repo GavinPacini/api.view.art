@@ -234,6 +234,8 @@ pub async fn verify_privy_auth(
                 exp: Utc::now().timestamp() + 30 * 24 * 60 * 60,
             };
 
+            tracing::info!("Verified auth for {:?}", connected_wallet_address);
+
             match encode(&Header::default(), &claims, &state.keys.encoding) {
                 Ok(token) => Ok((
                     StatusCode::OK,
