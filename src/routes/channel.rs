@@ -1,6 +1,5 @@
 use {
     super::auth::Claims,
-    super::auth::PrivyClaims,
     crate::{
         model::{ChannelContent, EmptyChannelContent},
         routes::internal_error,

@@ -18,7 +18,7 @@ use {
         RequestPartsExt,
     },
     axum_extra::{
-        extract::cookie::{Cookie, CookieJar},
+        extract::cookie::{CookieJar},
         headers::{authorization::Bearer, Authorization},
         TypedHeader,
     },
@@ -29,6 +29,7 @@ use {
     serde::{Deserialize, Deserializer, Serialize},
     serde_json::json,
     siwe::{generate_nonce, VerificationError},
+    std::str::FromStr,
 };
 
 /// 1 hour
@@ -62,13 +63,15 @@ pub struct LinkedAccount {
     #[serde(rename = "type")]
     pub account_type: String,
 
-    pub address: String,
+    pub address: Address,
 
     #[serde(rename = "chain_type")]
-    pub chain_type: String,
+    #[serde(default)]
+    pub chain_type: Option<String>,
 
     #[serde(rename = "wallet_client_type")]
-    pub wallet_client_type: String,
+    #[serde(default)]
+    pub wallet_client_type: Option<String>,
 
     pub lv: usize,
 }
@@ -160,6 +163,7 @@ pub async fn get_nonce(
 
 pub async fn verify_privy_auth(
     cookies: CookieJar,
+    state: State<AppState>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let args = Args::load().await.map_err(|err| {
         tracing::error!("Error loading args: {:?}", err);
@@ -177,41 +181,71 @@ pub async fn verify_privy_auth(
         StatusCode::UNAUTHORIZED
     })?;
 
-    // Create and configure the Validation instance
-    let validation = Validation::new(jsonwebtoken::Algorithm::ES256);
-
-    tracing::info!("Validation: {:?}", validation);
-
-    let decoded = jsonwebtoken::decode::<PrivyClaims>(
-        &token,
-        &DecodingKey::from_ec_pem(privy_public_key.as_bytes()).map_err(|err| {
-            tracing::error!("Failed to parse EC key: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?,
-        &validation,
-    )
-    .map_err(|err| {
-        tracing::error!("JWT verification error: {:?}", err);
+    // Retrieve the "connected-wallet" cookie
+    let connected_wallet_cookie = cookies.get("connected-wallet").map(|cookie| cookie.value()).ok_or_else(|| {
+        tracing::error!("Missing connected-wallet cookie");
         StatusCode::UNAUTHORIZED
     })?;
 
-    let claims = decoded.claims;
+    match alloy::primitives::Address::from_str(connected_wallet_cookie) {
+        Ok(connected_wallet_address) => {
+            // Create and configure the Validation instance
+            let validation = Validation::new(jsonwebtoken::Algorithm::ES256);
 
-    // Call the `valid` method to validate the claims
-    claims.valid(&privy_app_id).map_err(|err| {
-        tracing::error!("Claims validation error: {:?}", err);
-        StatusCode::UNAUTHORIZED
-    })?;
+            tracing::info!("Validation: {:?}", validation);
 
-    // Log the decoded claims if valid
-    tracing::info!("Decoded and validated JWT claims: {:?}", claims);
+            let decoded = jsonwebtoken::decode::<PrivyClaims>(
+                &token,
+                &DecodingKey::from_ec_pem(privy_public_key.as_bytes()).map_err(|err| {
+                    tracing::error!("Failed to parse EC key: {:?}", err);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?,
+                &validation,
+            )
+            .map_err(|err| {
+                tracing::error!("JWT verification error: {:?}", err);
+                StatusCode::UNAUTHORIZED
+            })?;
 
-    // Log linked accounts
-    for account in &claims.linked_accounts {
-        tracing::info!("Linked account: {:?}", account);
+            let privy_claims = decoded.claims;
+
+            // Call the `valid` method to validate privy claims
+            privy_claims.valid(&privy_app_id).map_err(|err| {
+                tracing::error!("Claims validation error: {:?}", err);
+                StatusCode::UNAUTHORIZED
+            })?;
+
+            // Ensure the connected-wallet matches one of the addresses in linked_accounts
+            if !privy_claims.linked_accounts.iter().any(|account| account.address == connected_wallet_address) {
+                tracing::error!("connected-wallet does not match any linked accounts");
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+
+            // Log the decoded privy claims if valid
+            tracing::debug!("Decoded and validated JWT claims: {:?}", privy_claims);
+
+            let claims = Claims {
+                address: connected_wallet_address,
+                // 30 days from now
+                exp: Utc::now().timestamp() + 30 * 24 * 60 * 60,
+            };
+
+            match encode(&Header::default(), &claims, &state.keys.encoding) {
+                Ok(token) => Ok((
+                    StatusCode::OK,
+                    json!({ "status": true, "token": token }).to_string(),
+                )),
+                Err(err) => {
+                    tracing::error!("Error encoding token: {:?}", err);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("connected-wallet invalid Address: {}", e);
+            Err(StatusCode::UNAUTHORIZED)
+        }
     }
-
-    Ok(StatusCode::OK)
 }
 
 pub async fn verify_auth(
