@@ -42,6 +42,7 @@ pub struct PrivyClaims {
 
     #[serde(rename = "linked_accounts", deserialize_with = "deserialize_linked_accounts")]
     pub linked_accounts: Vec<LinkedAccount>,
+
     #[serde(rename = "iss")]
     pub issuer: String,
 
@@ -63,7 +64,7 @@ pub struct LinkedAccount {
     #[serde(rename = "type")]
     pub account_type: String,
 
-    pub address: Address,
+    pub address: String,
 
     #[serde(rename = "chain_type")]
     #[serde(default)]
@@ -85,8 +86,10 @@ where
 {
     // Deserialize the field as a string
     let linked_accounts_str = String::deserialize(deserializer)?;
+
     // Parse the string as JSON to get a Vec<LinkedAccount>
-    serde_json::from_str(&linked_accounts_str).map_err(serde::de::Error::custom)
+    serde_json::from_str::<Vec<LinkedAccount>>(&linked_accounts_str)
+        .map_err(serde::de::Error::custom)
 }
 
 impl PrivyClaims {
@@ -216,13 +219,14 @@ pub async fn verify_privy_auth(
             })?;
 
             // Ensure the connected-wallet matches one of the addresses in linked_accounts
-            if !privy_claims.linked_accounts.iter().any(|account| account.address == connected_wallet_address) {
+            if !privy_claims.linked_accounts.iter().any(|account| {
+                account.account_type == "wallet" &&
+                alloy::primitives::Address::from_str(&account.address)
+                    .map_or(false, |wallet_address| wallet_address == connected_wallet_address)
+            }) {
                 tracing::error!("connected-wallet does not match any linked accounts");
                 return Err(StatusCode::UNAUTHORIZED);
             }
-
-            // Log the decoded privy claims if valid
-            tracing::debug!("Decoded and validated JWT claims: {:?}", privy_claims);
 
             let claims = Claims {
                 address: connected_wallet_address,
