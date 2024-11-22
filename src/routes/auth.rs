@@ -167,10 +167,11 @@ pub async fn get_nonce(
 pub async fn verify_privy_auth(
     cookies: CookieJar,
     state: State<AppState>,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> Result<impl IntoResponse, PrivyAuthError> {
     let args = Args::load().await.map_err(|err| {
-        tracing::error!("Error loading args: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
+        let msg = format!("Error loading args: {:?}", err);
+        tracing::error!("{}", msg);
+        PrivyAuthError::InternalError(msg)
     })?;
 
     let privy_app_id = String::from(args.privy_app_id);  
@@ -179,78 +180,100 @@ pub async fn verify_privy_auth(
     tracing::info!("Preparing to verify privy auth");
 
     // Retrieve the "privy-id-token" cookie
-    let token = cookies.get("privy-id-token").map(|cookie| cookie.value()).ok_or_else(|| {
-        tracing::error!("Missing privy-id-token");
-        StatusCode::UNAUTHORIZED
-    })?;
+    let token = cookies
+        .get("privy-id-token")
+        .map(|cookie| cookie.value())
+        .ok_or_else(|| PrivyAuthError::MissingCookie("Missing privy-id-token cookie".to_string()))?;
 
     // Retrieve the "connected-wallet" cookie
-    let connected_wallet_cookie = cookies.get("connected-wallet").map(|cookie| cookie.value()).ok_or_else(|| {
-        tracing::error!("Missing connected-wallet cookie");
-        StatusCode::UNAUTHORIZED
+    let connected_wallet_cookie = cookies
+        .get("connected-wallet")
+        .map(|cookie| cookie.value())
+        .ok_or_else(|| PrivyAuthError::MissingCookie("Missing connected-wallet cookie".to_string()))?;
+
+    let connected_wallet_address = alloy::primitives::Address::from_str(connected_wallet_cookie)
+        .map_err(|e| PrivyAuthError::InvalidAddress(format!("Invalid connected-wallet address: {}", e)))?;
+
+    tracing::info!("Connected wallet address: {:?}", connected_wallet_address);
+
+    // Create and configure the Validation instance
+    let validation = Validation::new(jsonwebtoken::Algorithm::ES256);
+
+    let decoded = jsonwebtoken::decode::<PrivyClaims>(
+        &token,
+        &DecodingKey::from_ec_pem(privy_public_key.as_bytes()).map_err(|err| {
+            PrivyAuthError::InternalError(format!("Failed to parse EC key: {:?}", err))
+        })?,
+        &validation,
+    )
+    .map_err(|err| PrivyAuthError::JwtDecodeError(format!("JWT verification error: {:?}", err)))?;
+
+    let privy_claims = decoded.claims;
+
+    // Call the `valid` method to validate privy claims
+    privy_claims.valid(&privy_app_id).map_err(|err| {
+        PrivyAuthError::ClaimsValidationError(format!("Claims validation error: {:?}", err))
     })?;
 
-    match alloy::primitives::Address::from_str(connected_wallet_cookie) {
-        Ok(connected_wallet_address) => {
-            // Create and configure the Validation instance
-            let validation = Validation::new(jsonwebtoken::Algorithm::ES256);
+    tracing::info!("Verified JWT claims successfully");
 
-            tracing::info!("Validation: {:?}", validation);
+    // Ensure the connected-wallet matches one of the wallet addresses in linked_accounts
+    if !privy_claims.linked_accounts.iter().any(|account| {
+        account.account_type == "wallet"
+            && alloy::primitives::Address::from_str(&account.address)
+                .map_or(false, |wallet_address| wallet_address == connected_wallet_address)
+    }) {
+        let msg = "connected-wallet does not match any linked accounts".to_string();
+        tracing::error!("{}", msg);
+        return Err(PrivyAuthError::ClaimsValidationError(msg));
+    }
 
-            let decoded = jsonwebtoken::decode::<PrivyClaims>(
-                &token,
-                &DecodingKey::from_ec_pem(privy_public_key.as_bytes()).map_err(|err| {
-                    tracing::error!("Failed to parse EC key: {:?}", err);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?,
-                &validation,
-            )
-            .map_err(|err| {
-                tracing::error!("JWT verification error: {:?}", err);
-                StatusCode::UNAUTHORIZED
-            })?;
+    let claims = Claims {
+        address: connected_wallet_address,
+        // 30 days from now
+        exp: Utc::now().timestamp() + 30 * 24 * 60 * 60,
+    };
 
-            let privy_claims = decoded.claims;
+    tracing::info!("Generating a new token for the connected wallet");
 
-            // Call the `valid` method to validate privy claims
-            privy_claims.valid(&privy_app_id).map_err(|err| {
-                tracing::error!("Claims validation error: {:?}", err);
-                StatusCode::UNAUTHORIZED
-            })?;
+    let token = encode(&Header::default(), &claims, &state.keys.encoding)
+        .map_err(|err| PrivyAuthError::InternalError(format!("Error encoding token: {:?}", err)))?;
 
-            // Ensure the connected-wallet matches one of the addresses in linked_accounts
-            if !privy_claims.linked_accounts.iter().any(|account| {
-                account.account_type == "wallet" &&
-                alloy::primitives::Address::from_str(&account.address)
-                    .map_or(false, |wallet_address| wallet_address == connected_wallet_address)
-            }) {
-                tracing::error!("connected-wallet does not match any linked accounts");
-                return Err(StatusCode::UNAUTHORIZED);
-            }
+    tracing::info!("Token successfully generated");
 
-            let claims = Claims {
-                address: connected_wallet_address,
-                // 30 days from now
-                exp: Utc::now().timestamp() + 30 * 24 * 60 * 60,
-            };
+    Ok((
+        StatusCode::OK,
+        Json(json!({ "status": true, "token": token })),
+    ))
+}
 
-            tracing::info!("Verified auth for {:?}", connected_wallet_address);
+#[derive(Debug)]
+pub enum PrivyAuthError {
+    MissingCookie(String),
+    InvalidAddress(String),
+    JwtDecodeError(String),
+    ClaimsValidationError(String),
+    InternalError(String),
+}
 
-            match encode(&Header::default(), &claims, &state.keys.encoding) {
-                Ok(token) => Ok((
-                    StatusCode::OK,
-                    json!({ "status": true, "token": token }).to_string(),
-                )),
-                Err(err) => {
-                    tracing::error!("Error encoding token: {:?}", err);
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
-                }
-            }
-        }
-        Err(e) => {
-            tracing::error!("connected-wallet invalid Address: {}", e);
-            Err(StatusCode::UNAUTHORIZED)
-        }
+impl IntoResponse for PrivyAuthError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, error_message) = match self {
+            PrivyAuthError::MissingCookie(msg) => (StatusCode::UNAUTHORIZED, msg),
+            PrivyAuthError::InvalidAddress(msg) => (StatusCode::UNAUTHORIZED, msg),
+            PrivyAuthError::JwtDecodeError(msg) => (StatusCode::UNAUTHORIZED, msg),
+            PrivyAuthError::ClaimsValidationError(msg) => (StatusCode::UNAUTHORIZED, msg),
+            PrivyAuthError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+        };
+
+        tracing::error!("Error occurred: {}", error_message);
+
+        // Return a JSON error response
+        let body = Json(json!({
+            "status": false,
+            "error": error_message,
+        }));
+        (status, body).into_response()
     }
 }
 
