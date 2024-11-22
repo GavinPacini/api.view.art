@@ -177,7 +177,8 @@ pub async fn verify_privy_auth(
     let privy_app_id = String::from(args.privy_app_id);  
     let privy_public_key = String::from(args.privy_public_key).replace("\\n", "\n");
 
-    tracing::info!("Preparing to verify privy auth");
+    tracing::info!("%%%%%%%%%%%%%%%%%%%%%%%% Preparing to verify privy auth %%%%%%%%%%%%%%%%%%%%%%%%%");
+    tracing::info!("Cookies received: {:?}", cookies);
 
     // Retrieve the "privy-id-token" cookie
     let token = cookies
