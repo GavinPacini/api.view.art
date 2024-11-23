@@ -18,7 +18,6 @@ use {
         RequestPartsExt,
     },
     axum_extra::{
-        extract::cookie::{CookieJar},
         headers::{authorization::Bearer, Authorization},
         TypedHeader,
     },
@@ -164,10 +163,63 @@ pub async fn get_nonce(
     }
 }
 
+#[derive(Debug)]
+pub struct PrivyAuthHeaders {
+    pub bearer_token: String,
+    pub connected_wallet: String,
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for PrivyAuthHeaders
+where
+    S: Send + Sync,
+{
+    type Rejection = PrivyAuthError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // Extract the Authorization header
+        let TypedHeader(auth_header) = parts
+            .extract::<TypedHeader<Authorization<Bearer>>>()
+            .await
+            .map_err(|_| PrivyAuthError::MissingHeader("Authorization header missing".to_string()))?;
+
+        let full_value = auth_header.token();
+
+        // Split the value using the pipe delimiter
+        let mut parts = full_value.split('|');
+
+        // Extract the token and connected wallet
+        let bearer_token = parts
+            .next()
+            .ok_or_else(|| PrivyAuthError::InvalidHeader("Authorization header format invalid".to_string()))?
+            .to_string();
+
+        let connected_wallet = parts
+            .next()
+            .ok_or_else(|| PrivyAuthError::InvalidHeader("Authorization header missing connected-wallet".to_string()))?
+            .to_string();
+
+        // Ensure no unexpected extra parts are included
+        if parts.next().is_some() {
+            return Err(PrivyAuthError::InvalidHeader(
+                "Authorization header contains unexpected extra parts".to_string(),
+            ));
+        }
+
+        Ok(PrivyAuthHeaders {
+            bearer_token,
+            connected_wallet,
+        })
+    }
+}
+
 pub async fn verify_privy_auth(
-    cookies: CookieJar,
+    PrivyAuthHeaders { bearer_token, connected_wallet }: PrivyAuthHeaders,
     state: State<AppState>,
 ) -> Result<impl IntoResponse, PrivyAuthError> {
+    let connected_wallet_address = alloy::primitives::Address::from_str(&connected_wallet)
+        .map_err(|e| PrivyAuthError::InvalidAddress(format!("Invalid connected-wallet address: {}", e)))?;
+
     let args = Args::load().await.map_err(|err| {
         let msg = format!("Error loading args: {:?}", err);
         tracing::error!("{}", msg);
@@ -177,31 +229,13 @@ pub async fn verify_privy_auth(
     let privy_app_id = String::from(args.privy_app_id);  
     let privy_public_key = String::from(args.privy_public_key).replace("\\n", "\n");
 
-    tracing::info!("%%%%%%%%%%%%%%%%%%%%%%%% Preparing to verify privy auth %%%%%%%%%%%%%%%%%%%%%%%%%");
-    tracing::info!("Cookies received: {:?}", cookies);
-
-    // Retrieve the "privy-id-token" cookie
-    let token = cookies
-        .get("privy-id-token")
-        .map(|cookie| cookie.value())
-        .ok_or_else(|| PrivyAuthError::MissingCookie("Missing privy-id-token cookie".to_string()))?;
-
-    // Retrieve the "connected-wallet" cookie
-    let connected_wallet_cookie = cookies
-        .get("connected-wallet")
-        .map(|cookie| cookie.value())
-        .ok_or_else(|| PrivyAuthError::MissingCookie("Missing connected-wallet cookie".to_string()))?;
-
-    let connected_wallet_address = alloy::primitives::Address::from_str(connected_wallet_cookie)
-        .map_err(|e| PrivyAuthError::InvalidAddress(format!("Invalid connected-wallet address: {}", e)))?;
-
-    tracing::info!("Connected wallet address: {:?}", connected_wallet_address);
+    tracing::info!("Preparing to verify privy auth");
 
     // Create and configure the Validation instance
     let validation = Validation::new(jsonwebtoken::Algorithm::ES256);
 
     let decoded = jsonwebtoken::decode::<PrivyClaims>(
-        &token,
+        &bearer_token,
         &DecodingKey::from_ec_pem(privy_public_key.as_bytes()).map_err(|err| {
             PrivyAuthError::InternalError(format!("Failed to parse EC key: {:?}", err))
         })?,
@@ -211,12 +245,12 @@ pub async fn verify_privy_auth(
 
     let privy_claims = decoded.claims;
 
-    // Call the `valid` method to validate privy claims
+    // Validate claims
     privy_claims.valid(&privy_app_id).map_err(|err| {
         PrivyAuthError::ClaimsValidationError(format!("Claims validation error: {:?}", err))
     })?;
 
-    tracing::info!("Verified JWT claims successfully");
+    tracing::info!("Verified JWT claims successfully for connected wallet {}", connected_wallet);
 
     // Ensure the connected-wallet matches one of the wallet addresses in linked_accounts
     if !privy_claims.linked_accounts.iter().any(|account| {
@@ -231,16 +265,11 @@ pub async fn verify_privy_auth(
 
     let claims = Claims {
         address: connected_wallet_address,
-        // 30 days from now
-        exp: Utc::now().timestamp() + 30 * 24 * 60 * 60,
+        exp: Utc::now().timestamp() + 30 * 24 * 60 * 60, // 30 days
     };
-
-    tracing::info!("Generating a new token for the connected wallet");
 
     let token = encode(&Header::default(), &claims, &state.keys.encoding)
         .map_err(|err| PrivyAuthError::InternalError(format!("Error encoding token: {:?}", err)))?;
-
-    tracing::info!("Token successfully generated");
 
     Ok((
         StatusCode::OK,
@@ -248,9 +277,12 @@ pub async fn verify_privy_auth(
     ))
 }
 
+
+
 #[derive(Debug)]
 pub enum PrivyAuthError {
-    MissingCookie(String),
+    MissingHeader(String),
+    InvalidHeader(String),
     InvalidAddress(String),
     JwtDecodeError(String),
     ClaimsValidationError(String),
@@ -260,7 +292,8 @@ pub enum PrivyAuthError {
 impl IntoResponse for PrivyAuthError {
     fn into_response(self) -> axum::response::Response {
         let (status, error_message) = match self {
-            PrivyAuthError::MissingCookie(msg) => (StatusCode::UNAUTHORIZED, msg),
+            PrivyAuthError::MissingHeader(msg) => (StatusCode::UNAUTHORIZED, msg),
+            PrivyAuthError::InvalidHeader(msg) => (StatusCode::UNAUTHORIZED, msg),
             PrivyAuthError::InvalidAddress(msg) => (StatusCode::UNAUTHORIZED, msg),
             PrivyAuthError::JwtDecodeError(msg) => (StatusCode::UNAUTHORIZED, msg),
             PrivyAuthError::ClaimsValidationError(msg) => (StatusCode::UNAUTHORIZED, msg),
