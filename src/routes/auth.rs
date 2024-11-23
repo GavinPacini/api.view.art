@@ -36,8 +36,6 @@ const NONCE_EXPIRY: u64 = 60 * 60;
 
 #[derive(Debug, Deserialize)]
 pub struct PrivyClaims {
-    #[serde(rename = "cr")]
-    pub cr: String,
 
     #[serde(rename = "linked_accounts", deserialize_with = "deserialize_linked_accounts")]
     pub linked_accounts: Vec<LinkedAccount>,
@@ -51,9 +49,6 @@ pub struct PrivyClaims {
     #[serde(rename = "aud")]
     pub app_id: String,
 
-    #[serde(rename = "sub")]
-    pub user_id: String,
-
     #[serde(rename = "exp")]
     pub expiration: usize,
 }
@@ -64,16 +59,6 @@ pub struct LinkedAccount {
     pub account_type: String,
 
     pub address: String,
-
-    #[serde(rename = "chain_type")]
-    #[serde(default)]
-    pub chain_type: Option<String>,
-
-    #[serde(rename = "wallet_client_type")]
-    #[serde(default)]
-    pub wallet_client_type: Option<String>,
-
-    pub lv: usize,
 }
 
 // Custom deserializer for `linked_accounts`
@@ -276,8 +261,6 @@ pub async fn verify_privy_auth(
         Json(json!({ "status": true, "token": token })),
     ))
 }
-
-
 
 #[derive(Debug)]
 pub enum PrivyAuthError {
