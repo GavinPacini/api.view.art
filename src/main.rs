@@ -125,6 +125,7 @@ fn app(allowed_origins: Vec<HeaderValue>, state: AppState) -> Router {
         Router::new()
             .route("/nonce", post(routes::auth::get_nonce))
             .route("/auth", post(routes::auth::verify_auth))
+            .route("/auth_privy", post(routes::auth::verify_privy_auth))
             .route(
                 "/channel/:channel",
                 get(routes::channel::get_channel).post(routes::channel::set_channel),
@@ -142,6 +143,7 @@ fn app(allowed_origins: Vec<HeaderValue>, state: AppState) -> Router {
             .layer(Extension(keys))
             .layer(
                 CorsLayer::new()
+                    .allow_credentials(true)
                     .allow_origin(allowed_origins)
                     .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                     .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION]),
