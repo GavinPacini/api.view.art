@@ -36,8 +36,10 @@ const NONCE_EXPIRY: u64 = 60 * 60;
 
 #[derive(Debug, Deserialize)]
 pub struct PrivyClaims {
-
-    #[serde(rename = "linked_accounts", deserialize_with = "deserialize_linked_accounts")]
+    #[serde(
+        rename = "linked_accounts",
+        deserialize_with = "deserialize_linked_accounts"
+    )]
     pub linked_accounts: Vec<LinkedAccount>,
 
     #[serde(rename = "iss")]
@@ -62,9 +64,7 @@ pub struct LinkedAccount {
 }
 
 // Custom deserializer for `linked_accounts`
-fn deserialize_linked_accounts<'de, D>(
-    deserializer: D,
-) -> Result<Vec<LinkedAccount>, D::Error>
+fn deserialize_linked_accounts<'de, D>(deserializer: D) -> Result<Vec<LinkedAccount>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -166,7 +166,9 @@ where
         let TypedHeader(auth_header) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
-            .map_err(|_| PrivyAuthError::MissingHeader("Authorization header missing".to_string()))?;
+            .map_err(|_| {
+                PrivyAuthError::MissingHeader("Authorization header missing".to_string())
+            })?;
 
         let full_value = auth_header.token();
 
@@ -176,12 +178,18 @@ where
         // Extract the token and connected wallet
         let bearer_token = parts
             .next()
-            .ok_or_else(|| PrivyAuthError::InvalidHeader("Authorization header format invalid".to_string()))?
+            .ok_or_else(|| {
+                PrivyAuthError::InvalidHeader("Authorization header format invalid".to_string())
+            })?
             .to_string();
 
         let connected_wallet = parts
             .next()
-            .ok_or_else(|| PrivyAuthError::InvalidHeader("Authorization header missing connected-wallet".to_string()))?
+            .ok_or_else(|| {
+                PrivyAuthError::InvalidHeader(
+                    "Authorization header missing connected-wallet".to_string(),
+                )
+            })?
             .to_string();
 
         // Ensure no unexpected extra parts are included
@@ -199,11 +207,16 @@ where
 }
 
 pub async fn verify_privy_auth(
-    PrivyAuthHeaders { bearer_token, connected_wallet }: PrivyAuthHeaders,
+    PrivyAuthHeaders {
+        bearer_token,
+        connected_wallet,
+    }: PrivyAuthHeaders,
     state: State<AppState>,
 ) -> Result<impl IntoResponse, PrivyAuthError> {
     let connected_wallet_address = alloy::primitives::Address::from_str(&connected_wallet)
-        .map_err(|e| PrivyAuthError::InvalidAddress(format!("Invalid connected-wallet address: {}", e)))?;
+        .map_err(|e| {
+            PrivyAuthError::InvalidAddress(format!("Invalid connected-wallet address: {}", e))
+        })?;
 
     let args = Args::load().await.map_err(|err| {
         let msg = format!("Error loading args: {:?}", err);
@@ -211,7 +224,7 @@ pub async fn verify_privy_auth(
         PrivyAuthError::InternalError(msg)
     })?;
 
-    let privy_app_id = String::from(args.privy_app_id);  
+    let privy_app_id = String::from(args.privy_app_id);
     let privy_public_key = String::from(args.privy_public_key).replace("\\n", "\n");
 
     tracing::info!("Preparing to verify privy auth");
@@ -235,13 +248,19 @@ pub async fn verify_privy_auth(
         PrivyAuthError::ClaimsValidationError(format!("Claims validation error: {:?}", err))
     })?;
 
-    tracing::info!("Verified JWT claims successfully for connected wallet {}", connected_wallet);
+    tracing::info!(
+        "Verified JWT claims successfully for connected wallet {}",
+        connected_wallet
+    );
 
-    // Ensure the connected-wallet matches one of the wallet addresses in linked_accounts
+    // Ensure the connected-wallet matches one of the wallet addresses in
+    // linked_accounts
     if !privy_claims.linked_accounts.iter().any(|account| {
         account.account_type == "wallet"
             && alloy::primitives::Address::from_str(&account.address)
-                .map_or(false, |wallet_address| wallet_address == connected_wallet_address)
+                .map_or(false, |wallet_address| {
+                    wallet_address == connected_wallet_address
+                })
     }) {
         let msg = "connected-wallet does not match any linked accounts".to_string();
         tracing::error!("{}", msg);
