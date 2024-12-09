@@ -6,6 +6,7 @@ use {
         utils::{
             address_migration::migrate_addresses,
             keys::{address_key, channel_key},
+            stream_helpers::get_channel_lifetime_views,
         },
         AppState,
     },
@@ -138,44 +139,60 @@ pub async fn get_summary(state: State<AppState>, Path(channel): Path<String>) ->
 
     let key = channel_key(&channel);
 
-    let initial_content: Option<ChannelContent> = {
-        match state.pool.get().await {
-            Ok(mut conn) => match conn.get(&key).await {
+    match state.pool.get().await {
+        Ok(mut conn) => {
+            let channel_views = match get_channel_lifetime_views(&mut conn, &channel).await {
+                Ok(views) => views,
+                Err(err) => {
+                    tracing::error!(
+                        "Error getting total views for channel {}: {:?}",
+                        channel,
+                        err
+                    );
+                    0
+                }
+            };
+
+            // Fetch the channel content
+            let initial_content: Option<ChannelContent> = match conn.get(&key).await {
                 Ok(content) => Some(content),
                 Err(err) => {
                     tracing::error!("Error getting content for channel {}: {:?}", channel, err);
                     None
                 }
-            },
-            Err(err) => {
-                tracing::error!("Error getting connection from pool: {:?}", err);
-                None
+            };
+
+            match initial_content {
+                Some(content) => {
+                    let mut summary = json!({});
+                    let items = content.items();
+
+                    // Add items to summary
+                    summary["items"] = json!(items.len());
+
+                    // Add thumbnail to summary
+                    if let Some(thumbnail) = items.first().map(|item| item.thumbnail_url.clone()) {
+                        summary["thumbnail"] = json!(thumbnail);
+                    }
+
+                    // Add view count to summary
+                    summary["lifetimeViews"] = json!(channel_views);
+
+                    (StatusCode::OK, json!(summary).to_string())
+                }
+                None => (
+                    StatusCode::NOT_FOUND,
+                    json!({ "status": false, "error": "channel not found" }).to_string(),
+                ),
             }
         }
-    };
-
-    match initial_content {
-        Some(content) => {
-            // Make summary a default JSON object
-            let mut summary = json!({});
-
-            // Get items from content across all versions
-            let items = content.items();
-
-            // Add items to summary
-            summary["items"] = json!(items.len());
-
-            // Add thumbnail to summary
-            if let Some(thumbnail) = items.first().map(|item| item.thumbnail_url.clone()) {
-                summary["thumbnail"] = json!(thumbnail);
-            }
-
-            (StatusCode::OK, json!(summary).to_string())
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "status": false, "error": "Internal server error" }).to_string(),
+            )
         }
-        None => (
-            StatusCode::NOT_FOUND,
-            json!({ "status": false, "error": "channel not found" }).to_string(),
-        ),
     }
 }
 
