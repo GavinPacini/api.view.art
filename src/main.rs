@@ -65,9 +65,9 @@ async fn main() -> Result<()> {
     tracing::info!("Running with args: {args:?}");
 
     // needed because Heroku Redis uses self-signed certificates
-    let insecure_redis_url = format!("{}/#insecure", String::from(args.redis_url));
+    let insecure_rediscloud_url = format!("{}/#insecure", String::from(args.rediscloud_url));
 
-    let manager = RedisConnectionManager::new::<String>(insecure_redis_url).unwrap();
+    let manager = RedisConnectionManager::new::<String>(insecure_rediscloud_url).unwrap();
     let pool = Pool::builder().build(manager).await.unwrap();
     {
         // ping the database before starting
@@ -189,7 +189,7 @@ mod tests {
         utils::keys::{nonce_key, old_address_key},
     };
 
-    const REDIS_URL: &str = "redis://localhost:6379";
+    const REDISCLOUD_URL: &str = "redis://localhost:6379";
     const BASE_RPC_URL: &str = "https://mainnet.base.org";
     const JWT_SECRET: &str = "secret";
 
@@ -200,7 +200,7 @@ mod tests {
         let listener = TcpListener::bind(format!("{}:0", host)).await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        let manager = RedisConnectionManager::new(REDIS_URL).unwrap();
+        let manager = RedisConnectionManager::new(REDISCLOUD_URL).unwrap();
         let pool = Pool::builder().build(manager).await.unwrap();
         {
             // flush redis before starting

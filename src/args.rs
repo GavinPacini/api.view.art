@@ -14,7 +14,7 @@ pub struct Args {
 
     /// Redis connection URI
     #[arg(long, env)]
-    pub redis_url: SecretString,
+    pub rediscloud_url: SecretString,
 
     /// Base RPC URL
     #[arg(long, env)]
