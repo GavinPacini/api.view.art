@@ -22,6 +22,55 @@ use {
 
 };
 
+pub async fn get_channel_views(
+    state: State<AppState>,
+    Path(channel): Path<String>,
+) -> impl IntoResponse {
+    let channel = channel.to_ascii_lowercase();
+    tracing::info!("Fetching all-time views for channel {}", channel);
+
+    let page_view_key = format!("page_views:{}", channel);
+
+    match state.pool.get().await {
+        Ok(mut conn) => {
+            // Fetch all-time views using TS.RANGE
+            let range_result: Result<Vec<(i64, i64)>, _> = redis::cmd("TS.RANGE")
+                .arg(&page_view_key)
+                .arg("-")
+                .arg("+")
+                .query_async(&mut *conn)
+                .await;
+
+            match range_result {
+                Ok(data_points) => {
+                    // Sum up all counts
+                    let total_views: i64 = data_points.iter().map(|(_, count)| *count).sum();
+                    (
+                        StatusCode::OK,
+                        Json(json!({ "channel": channel, "total_views": total_views })),
+                    )
+                }
+                Err(err) => {
+                    tracing::error!("Error fetching views for channel {}: {:?}", channel, err);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({ "error": "Failed to fetch views", "details": format!("{:?}", err) })),
+                    )
+                }
+            }
+        }
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Failed to connect to Redis", "details": format!("{:?}", err) })),
+            )
+        }
+    }
+}
+
+
+
 pub async fn log_channel_view(
     state: State<AppState>,
     Path(channel): Path<String>,
