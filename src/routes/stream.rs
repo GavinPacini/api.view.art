@@ -3,7 +3,7 @@ use {
     crate::{
         routes::internal_error,
         utils::{
-            keys::{channel_key},
+            keys::{channel_key, channel_view_key},
             stream_helpers::get_channel_lifetime_views,
         },
         AppState,
@@ -62,7 +62,7 @@ pub async fn log_channel_view(
     tracing::info!("Log page view for channel {}", channel);
 
     let channel_key = channel_key(&channel);
-    let page_view_key = format!("page_views:{}", channel); // Key for time-series data
+    let channel_view_key = channel_view_key(&channel);
 
     match state.pool.get().await {
         Ok(mut conn) => {
@@ -85,7 +85,7 @@ pub async fn log_channel_view(
 
             // Increment the count at the current timestamp by 1
             if let Err(err) = conn
-                .ts_incrby(&page_view_key, 1, Some(chrono::Utc::now().timestamp_millis()))
+                .ts_incrby(&channel_view_key, 1, Some(chrono::Utc::now().timestamp_millis()))
                 .await
             {
                 tracing::error!("Error logging page view for {}: {:?}", channel, err);

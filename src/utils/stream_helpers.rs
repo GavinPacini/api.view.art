@@ -1,20 +1,23 @@
-use bb8::PooledConnection;
-use bb8_redis::RedisConnectionManager;
-use anyhow::Result;
-use std::ops::DerefMut;
+use {
+    crate::utils::keys::channel_view_key,
+    anyhow::Result,
+    bb8::PooledConnection,
+    bb8_redis::RedisConnectionManager,
+    std::ops::DerefMut,    
+};
 
 pub async fn get_channel_lifetime_views(
     conn: &mut PooledConnection<'_, RedisConnectionManager>,
     channel: &str,
 ) -> Result<i64> {
-    let page_view_key = format!("page_views:{}", channel);
+    let key = channel_view_key(channel);
 
     // Dereference the pooled connection to access the underlying Redis connection
     let redis_conn = conn.deref_mut();
 
     // Execute TS.RANGE command
     let data_points: Vec<(i64, i64)> = match redis::cmd("TS.RANGE")
-        .arg(&page_view_key)
+        .arg(&key)
         .arg("-")
         .arg("+")
         .query_async(redis_conn)
