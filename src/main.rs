@@ -143,9 +143,10 @@ fn app(allowed_origins: AllowOrigin, state: AppState) -> Router {
                 get(routes::wallet::get_channels),
             )
             .route(
-                "/stream/:channel",
+                "/view/:channel",
                 get(routes::stream::get_channel_view_metrics).post(routes::stream::log_channel_view),
             )
+            .route("/stream/:item_id", post(routes::stream::log_item_stream))
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
             .layer(

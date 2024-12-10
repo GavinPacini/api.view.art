@@ -3,7 +3,7 @@ use {
     crate::{
         routes::internal_error,
         utils::{
-            keys::{channel_key, channel_view_key},
+            keys::{channel_key, channel_view_key, item_stream_key},
             stream_helpers::get_channel_lifetime_views,
         },
         AppState,
@@ -59,7 +59,7 @@ pub async fn log_channel_view(
     Path(channel): Path<String>,
 ) -> impl IntoResponse {
     let channel = channel.to_ascii_lowercase();
-    tracing::info!("Log page view for channel {}", channel);
+    tracing::info!("Log channel view for channel {}", channel);
 
     let channel_key = channel_key(&channel);
     let channel_view_key = channel_view_key(&channel);
@@ -89,6 +89,36 @@ pub async fn log_channel_view(
                 .await
             {
                 tracing::error!("Error logging page view for {}: {:?}", channel, err);
+                return internal_error(anyhow!(err));
+            }
+        }
+        Err(err) => {
+            tracing::error!("Error getting connection from pool: {:?}", err);
+            return internal_error(anyhow!(err));
+        }
+    }
+
+    (StatusCode::OK, json!({ "status": true }).to_string())
+}
+
+pub async fn log_item_stream(
+    state: State<AppState>,
+    Path(item_id): Path<String>,
+) -> impl IntoResponse {
+    let item_id = item_id.to_ascii_lowercase();
+    tracing::info!("Log item stream for item with id {}", item_id);
+
+    let item_stream_key = item_stream_key(&item_id);
+
+    match state.pool.get().await {
+        Ok(mut conn) => {
+
+            // Increment the count at the current timestamp by 1
+            if let Err(err) = conn
+                .ts_incrby(&item_stream_key, 1, Some(chrono::Utc::now().timestamp_millis()))
+                .await
+            {
+                tracing::error!("Error logging item stream for {}: {:?}", item_stream_key, err);
                 return internal_error(anyhow!(err));
             }
         }
