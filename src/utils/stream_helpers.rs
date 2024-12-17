@@ -10,14 +10,14 @@ pub async fn get_channel_lifetime_views(
     conn: &mut PooledConnection<'_, RedisConnectionManager>,
     channel: &str,
 ) -> Result<i64> {
-    let key = channel_view_key(channel);
+    let channel_view_key = channel_view_key(channel);
 
     // Dereference the pooled connection to access the underlying Redis connection
     let redis_conn = conn.deref_mut();
 
     // Execute TS.RANGE command
     let data_points: Vec<(i64, i64)> = match redis::cmd("TS.RANGE")
-        .arg(&key)
+        .arg(&channel_view_key)
         .arg("-")
         .arg("+")
         .query_async(redis_conn)
@@ -34,7 +34,5 @@ pub async fn get_channel_lifetime_views(
         }
     };
 
-    // Sum all counts from data points
-    let total_views: i64 = data_points.iter().map(|(_, count)| *count).sum();
-    Ok(total_views)
+    Ok(data_points.len() as i64)
 }
