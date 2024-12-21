@@ -494,11 +494,16 @@ pub async fn get_top_channels_weekly(State(state): State<AppState>) -> impl Into
                 channels_with_counts.into_iter().collect();
             sorted_channels.sort_by(|a, b| b.1.cmp(&a.1));
 
+            // Map sorted channels to the desired format
+            let formatted_channels: Vec<_> = sorted_channels
+                .into_iter()
+                .take(30)
+                .map(|(name, views)| json!({ "name": name, "views": views }))
+                .collect();
+
             (
                 StatusCode::OK,
-                Json(
-                    json!({ "channels": sorted_channels.into_iter().take(30).collect::<Vec<_>>() }),
-                ),
+                Json(json!(formatted_channels)),
             )
         }
         Err(err) => {
