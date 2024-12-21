@@ -3,7 +3,7 @@ use {
     crate::{
         routes::internal_error,
         utils::{
-            keys::{channel_key, channel_view_key, item_stream_key},
+            keys::{channel_key, channel_view_key, item_stream_key, user_view_key},
             stream_helpers::get_channel_lifetime_views,
         },
         AppState,
@@ -64,7 +64,7 @@ pub async fn log_channel_view(
 
     let channel_key = channel_key(&channel);
     let channel_view_key = channel_view_key(&channel);
-    let user_view_key = format!("user_view:{}:{}", user, channel);
+    let user_view_key = user_view_key(&user, &channel);
 
     match state.pool.get().await {
         Ok(mut conn) => {

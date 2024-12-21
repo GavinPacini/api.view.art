@@ -230,7 +230,7 @@ mod tests {
             axum::serve(
                 listener,
                 app(
-                    vec![],
+                    vec![].into(),
                     AppState {
                         pool,
                         changes,
