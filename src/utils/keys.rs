@@ -109,10 +109,10 @@ mod tests {
     #[test]
     fn test_user_view_key() {
         let key = user_view_key("test", "testchannel");
-        assert_eq!(key, "user_views:testchannel");
+        assert_eq!(key, "user_views:test:testchannel");
 
         let key = user_view_key("TEST", "TESTCHANNEL");
-        assert_eq!(key, "user_views:testchannel");
+        assert_eq!(key, "user_views:test:testchannel");
     }
 
     #[test]
