@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_user_view_key() {
-        let key = user_view_key("test", "testhannel");
+        let key = user_view_key("test", "testchannel");
         assert_eq!(key, "user_views:testchannel");
 
         let key = user_view_key("TEST", "TESTCHANNEL");
