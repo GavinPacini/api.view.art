@@ -1,5 +1,4 @@
 use {
-    
     crate::{
         routes::internal_error,
         utils::{
@@ -8,16 +7,14 @@ use {
         },
         AppState,
     },
-    anyhow::{anyhow},
+    anyhow::anyhow,
     axum::{
         extract::{ConnectInfo, Path, State},
         http::StatusCode,
-        response::{
-            IntoResponse,
-        },
+        response::IntoResponse,
         Json,
     },
-    bb8_redis::redis::{aio::ConnectionLike, AsyncCommands, Cmd, RedisResult, RedisError},
+    bb8_redis::redis::{aio::ConnectionLike, AsyncCommands, Cmd, RedisError, RedisResult},
     serde_json::json,
     std::{future::Future, net::SocketAddr, pin::Pin},
 };
@@ -36,7 +33,11 @@ pub async fn get_channel_view_metrics(
                 Json(json!({ "channel": channel, "total_views": total_views })),
             ),
             Err(err) => {
-                tracing::error!("Error getting total views for channel {}: {:?}", channel, err);
+                tracing::error!(
+                    "Error getting total views for channel {}: {:?}",
+                    channel,
+                    err
+                );
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({ "error": "Failed to fetch total views" })),
@@ -100,7 +101,11 @@ pub async fn log_channel_view(
                 Ok(true) => {
                     tracing::info!("Set view and rate limit for user");
                     if let Err(err) = conn
-                        .ts_incrby(&channel_view_key, 1, Some(chrono::Utc::now().timestamp_millis()))
+                        .ts_incrby(
+                            &channel_view_key,
+                            1,
+                            Some(chrono::Utc::now().timestamp_millis()),
+                        )
                         .await
                     {
                         tracing::error!("Error logging page view for {}: {:?}", channel, err);
@@ -136,13 +141,20 @@ pub async fn log_item_stream(
 
     match state.pool.get().await {
         Ok(mut conn) => {
-
             // Increment the count at the current timestamp by 1
             if let Err(err) = conn
-                .ts_incrby(&item_stream_key, 1, Some(chrono::Utc::now().timestamp_millis()))
+                .ts_incrby(
+                    &item_stream_key,
+                    1,
+                    Some(chrono::Utc::now().timestamp_millis()),
+                )
                 .await
             {
-                tracing::error!("Error logging item stream for {}: {:?}", item_stream_key, err);
+                tracing::error!(
+                    "Error logging item stream for {}: {:?}",
+                    item_stream_key,
+                    err
+                );
                 return internal_error(anyhow!(err));
             }
         }

@@ -29,7 +29,12 @@ pub fn item_stream_key(item_caid: &str) -> String {
 }
 
 pub fn user_view_key(user: &str, channel: &str) -> String {
-    format!("{}:{}:{}", USER_VIEW_KEY, user.to_ascii_lowercase(), channel.to_ascii_lowercase())
+    format!(
+        "{}:{}:{}",
+        USER_VIEW_KEY,
+        user.to_ascii_lowercase(),
+        channel.to_ascii_lowercase()
+    )
 }
 
 pub fn nonce_key(address: &Address, chain_id: u64) -> String {

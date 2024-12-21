@@ -457,12 +457,13 @@ pub async fn get_top_channels_weekly(State(state): State<AppState>) -> impl Into
                 match scan_result {
                     Ok((next_cursor, keys)) => {
                         for key in keys {
-                            let range_result: Result<Vec<(String, String)>, _> = redis::cmd("TS.RANGE")
-                                .arg(&key)
-                                .arg(seven_days_ago)
-                                .arg(now)
-                                .query_async(&mut *conn)
-                                .await;
+                            let range_result: Result<Vec<(String, String)>, _> =
+                                redis::cmd("TS.RANGE")
+                                    .arg(&key)
+                                    .arg(seven_days_ago)
+                                    .arg(now)
+                                    .query_async(&mut *conn)
+                                    .await;
 
                             if let Ok(data_points) = range_result {
                                 let count = data_points.len(); // Count each entry
@@ -501,10 +502,7 @@ pub async fn get_top_channels_weekly(State(state): State<AppState>) -> impl Into
                 .map(|(name, views)| json!({ "name": name, "views": views }))
                 .collect();
 
-            (
-                StatusCode::OK,
-                Json(json!(formatted_channels)),
-            )
+            (StatusCode::OK, Json(json!(formatted_channels)))
         }
         Err(err) => {
             tracing::error!("Failed to get Redis connection: {:?}", err);
