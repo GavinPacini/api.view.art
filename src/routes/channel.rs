@@ -439,6 +439,8 @@ pub async fn get_top_channels_weekly(State(state): State<AppState>) -> impl Into
         .unwrap()
         .timestamp_millis();
 
+    let now = chrono::Utc::now().timestamp_millis();
+
     match state.pool.get().await {
         Ok(mut conn) => {
             let mut cursor = 0;
@@ -455,18 +457,20 @@ pub async fn get_top_channels_weekly(State(state): State<AppState>) -> impl Into
                 match scan_result {
                     Ok((next_cursor, keys)) => {
                         for key in keys {
-                            let range_result: Result<Vec<(i64, i64)>, _> = redis::cmd("TS.RANGE")
+                            let range_result: Result<Vec<(String, String)>, _> = redis::cmd("TS.RANGE")
                                 .arg(&key)
                                 .arg(seven_days_ago)
-                                .arg("+")
+                                .arg(now)
                                 .query_async(&mut *conn)
                                 .await;
 
                             if let Ok(data_points) = range_result {
-                                let count = data_points.len();
-                                let channel_name =
-                                    key.trim_start_matches("channel_views:").to_string();
-                                channels_with_counts.insert(channel_name, count);
+                                let count = data_points.len(); // Count each entry
+                                if count > 0 {
+                                    let channel_name =
+                                        key.trim_start_matches("channel_views:").to_string();
+                                    channels_with_counts.insert(channel_name, count);
+                                }
                             }
                         }
 
