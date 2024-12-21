@@ -83,7 +83,6 @@ pub async fn log_channel_view(
                 );
             }
 
-            tracing::info!("LOGGING");
             // Increment the count at the current timestamp by 1
             if let Err(err) = conn
                 .ts_incrby(&channel_view_key, 1, Some(chrono::Utc::now().timestamp_millis()))

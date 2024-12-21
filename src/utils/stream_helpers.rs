@@ -12,27 +12,12 @@ pub async fn get_channel_lifetime_views(
 ) -> Result<i64> {
     let channel_view_key = channel_view_key(channel);
 
-    // Dereference the pooled connection to access the underlying Redis connection
-    let redis_conn = conn.deref_mut();
-
-    // Execute TS.RANGE command
-    let data_points: Vec<(i64, i64)> = match redis::cmd("TS.RANGE")
+    // Use TS.GET to fetch the last value from the time series
+    let result: Option<(i64, i64)> = redis::cmd("TS.GET")
         .arg(&channel_view_key)
-        .arg("-")
-        .arg("+")
-        .query_async(redis_conn)
-        .await
-    {
-        Ok(data) => data,
-        Err(err) => {
-            tracing::error!(
-                "Error fetching view count for channel {}: {:?}",
-                channel,
-                err
-            );
-            return Err(anyhow::anyhow!("Failed to fetch view count: {:?}", err));
-        }
-    };
+        .query_async(conn.deref_mut())
+        .await?;
 
-    Ok(data_points.len() as i64)
+    // Extract the value or return 0 if no data points are present
+    Ok(result.map(|(_, value)| value).unwrap_or(0))
 }

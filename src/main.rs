@@ -147,6 +147,7 @@ fn app(allowed_origins: AllowOrigin, state: AppState) -> Router {
                 get(routes::stream::get_channel_view_metrics).post(routes::stream::log_channel_view),
             )
             .route("/stream/:item_id", post(routes::stream::log_item_stream))
+            .route("/top/weekly", get(routes::channel::get_top_channels_weekly))
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
             .layer(
