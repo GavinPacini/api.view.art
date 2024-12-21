@@ -3,7 +3,7 @@ use {
     anyhow::Result,
     bb8::PooledConnection,
     bb8_redis::RedisConnectionManager,
-    std::ops::DerefMut,    
+    std::ops::DerefMut,
 };
 
 pub async fn get_channel_lifetime_views(

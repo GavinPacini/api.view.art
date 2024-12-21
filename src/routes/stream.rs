@@ -10,17 +10,16 @@ use {
     },
     anyhow::{anyhow},
     axum::{
-        extract::{Path, State},
+        extract::{ConnectInfo, Path, State},
         http::StatusCode,
         response::{
             IntoResponse,
         },
         Json,
     },
-    bb8_redis::redis::{aio::ConnectionLike, AsyncCommands, Cmd, RedisResult},
+    bb8_redis::redis::{aio::ConnectionLike, AsyncCommands, Cmd, RedisResult, RedisError},
     serde_json::json,
-    std::{future::Future, pin::Pin},
-
+    std::{future::Future, net::SocketAddr, pin::Pin},
 };
 
 pub async fn get_channel_view_metrics(
@@ -57,17 +56,20 @@ pub async fn get_channel_view_metrics(
 pub async fn log_channel_view(
     state: State<AppState>,
     Path(channel): Path<String>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> impl IntoResponse {
+    let user = addr.ip().to_string();
     let channel = channel.to_ascii_lowercase();
     tracing::info!("Log channel view for channel {}", channel);
 
     let channel_key = channel_key(&channel);
     let channel_view_key = channel_view_key(&channel);
+    let user_view_key = format!("user_view:{}:{}", user, channel);
 
     match state.pool.get().await {
         Ok(mut conn) => {
             // Check if the channel exists
-            let exists: bool = match conn.exists::<&str, bool>(&channel_key).await {
+            let exists: bool = match conn.exists::<_, bool>(&channel_key).await {
                 Ok(exists) => exists,
                 Err(err) => {
                     tracing::error!("Error checking if channel exists: {:?}", err);
@@ -83,13 +85,35 @@ pub async fn log_channel_view(
                 );
             }
 
-            // Increment the count at the current timestamp by 1
-            if let Err(err) = conn
-                .ts_incrby(&channel_view_key, 1, Some(chrono::Utc::now().timestamp_millis()))
-                .await
-            {
-                tracing::error!("Error logging page view for {}: {:?}", channel, err);
-                return internal_error(anyhow!(err));
+            let ttl_seconds = 600; // 10 minutes in seconds
+
+            let set_result: Result<bool, RedisError> = redis::cmd("SET")
+                .arg(&user_view_key)
+                .arg(&channel)
+                .arg("NX")
+                .arg("EX")
+                .arg(ttl_seconds)
+                .query_async(&mut *conn)
+                .await;
+
+            match set_result {
+                Ok(true) => {
+                    tracing::info!("Set view and rate limit for user");
+                    if let Err(err) = conn
+                        .ts_incrby(&channel_view_key, 1, Some(chrono::Utc::now().timestamp_millis()))
+                        .await
+                    {
+                        tracing::error!("Error logging page view for {}: {:?}", channel, err);
+                        return internal_error(anyhow!(err));
+                    }
+                }
+                Ok(false) => {
+                    tracing::info!("User already viewed channel within the last 10 minutes");
+                }
+                Err(err) => {
+                    tracing::error!("Error applying rate limit for {}: {:?}", user, err);
+                    return internal_error(anyhow!(err));
+                }
             }
         }
         Err(err) => {

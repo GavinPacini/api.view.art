@@ -24,10 +24,13 @@ use {
     bb8_redis::redis::AsyncCommands,
     futures::{stream::Stream, StreamExt},
     serde_json::json,
-    std::{collections::HashSet, collections::HashMap, convert::Infallible, time::Duration},
+    std::{
+        collections::{HashMap, HashSet},
+        convert::Infallible,
+        time::Duration,
+    },
     tokio_stream::wrappers::BroadcastStream,
 };
-
 
 pub async fn get_channel(
     state: State<AppState>,
@@ -430,9 +433,7 @@ fn validate_channel_content(channel_content: &ChannelContent) -> Result<()> {
 }
 
 // Get the 30 channels with the most views in the last 7 days
-pub async fn get_top_channels_weekly(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn get_top_channels_weekly(State(state): State<AppState>) -> impl IntoResponse {
     let seven_days_ago = chrono::Utc::now()
         .checked_sub_signed(chrono::Duration::days(7))
         .unwrap()
@@ -491,7 +492,9 @@ pub async fn get_top_channels_weekly(
 
             (
                 StatusCode::OK,
-                Json(json!({ "channels": sorted_channels.into_iter().take(30).collect::<Vec<_>>() })),
+                Json(
+                    json!({ "channels": sorted_channels.into_iter().take(30).collect::<Vec<_>>() }),
+                ),
             )
         }
         Err(err) => {

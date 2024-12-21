@@ -25,7 +25,8 @@ use {
     std::net::{Ipv4Addr, SocketAddr},
     tower_http::{
         cors::{AllowOrigin, CorsLayer},
-        trace::TraceLayer},
+        trace::TraceLayer,
+    },
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
@@ -105,7 +106,8 @@ async fn main() -> Result<()> {
             provider,
             keys,
         },
-    );
+    )
+    .into_make_service_with_connect_info::<SocketAddr>();
 
     // run it
     let listener =
@@ -144,7 +146,8 @@ fn app(allowed_origins: AllowOrigin, state: AppState) -> Router {
             )
             .route(
                 "/view/:channel",
-                get(routes::stream::get_channel_view_metrics).post(routes::stream::log_channel_view),
+                get(routes::stream::get_channel_view_metrics)
+                    .post(routes::stream::log_channel_view),
             )
             .route("/stream/:item_id", post(routes::stream::log_item_stream))
             .route("/top/weekly", get(routes::channel::get_top_channels_weekly))
