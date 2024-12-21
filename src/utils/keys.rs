@@ -91,19 +91,19 @@ mod tests {
     #[test]
     fn test_channel_view_key() {
         let key = channel_view_key("test");
-        assert_eq!(key, "channel_view:test");
+        assert_eq!(key, "channel_views:test");
 
         let key = channel_view_key("TEST");
-        assert_eq!(key, "channel_view:test");
+        assert_eq!(key, "channel_views:test");
     }
 
     #[test]
     fn test_item_stream_key() {
         let key = item_stream_key("test");
-        assert_eq!(key, "item_stream:test");
+        assert_eq!(key, "item_streams:test");
 
         let key = item_stream_key("TEST");
-        assert_eq!(key, "item_stream:test");
+        assert_eq!(key, "item_streams:test");
     }
 
     #[test]
