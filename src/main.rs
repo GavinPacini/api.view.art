@@ -23,7 +23,9 @@ use {
     changes::Changes,
     routes::auth::Keys,
     std::net::{Ipv4Addr, SocketAddr},
-    tower_http::{cors::CorsLayer, trace::TraceLayer},
+    tower_http::{
+        cors::{AllowOrigin, CorsLayer},
+        trace::TraceLayer},
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
@@ -87,11 +89,12 @@ async fn main() -> Result<()> {
 
     let changes = Changes::new();
 
-    let allowed_origins: Vec<HeaderValue> = ALLOWED_ORIGINS
-        .iter()
-        .map(|origin| origin.parse::<HeaderValue>().unwrap())
-        .chain(args.allowed_origins.unwrap_or_default())
-        .collect::<Vec<_>>();
+    let allowed_origins = AllowOrigin::list(
+        ALLOWED_ORIGINS
+            .iter()
+            .map(|&origin| origin.parse::<HeaderValue>().unwrap())
+            .chain(args.allowed_origins.unwrap_or_default()),
+    );
 
     // build our application
     let app = app(
@@ -117,7 +120,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn app(allowed_origins: Vec<HeaderValue>, state: AppState) -> Router {
+fn app(allowed_origins: AllowOrigin, state: AppState) -> Router {
     let keys = state.keys.clone();
     // build our application with a route
     Router::new().nest(
@@ -139,6 +142,12 @@ fn app(allowed_origins: Vec<HeaderValue>, state: AppState) -> Router {
                 "/wallet/:address/channels",
                 get(routes::wallet::get_channels),
             )
+            .route(
+                "/view/:channel",
+                get(routes::stream::get_channel_view_metrics).post(routes::stream::log_channel_view),
+            )
+            .route("/stream/:item_id", post(routes::stream::log_item_stream))
+            .route("/top/weekly", get(routes::channel::get_top_channels_weekly))
             .layer(TraceLayer::new_for_http())
             .layer(Extension(keys))
             .layer(
