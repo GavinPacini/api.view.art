@@ -2,7 +2,13 @@ use {
     crate::{
         routes::internal_error,
         utils::{
-            keys::{channel_key, channel_view_key, item_stream_key, user_view_key},
+            keys::{
+                channel_key,
+                channel_view_key,
+                item_stream_key,
+                user_stream_key,
+                user_view_key,
+            },
             stream_helpers::get_channel_lifetime_views,
         },
         AppState,
@@ -108,7 +114,7 @@ pub async fn log_channel_view(
                         )
                         .await
                     {
-                        tracing::error!("Error logging page view for {}: {:?}", channel, err);
+                        tracing::error!("Error logging channel view for {}: {:?}", channel, err);
                         return internal_error(anyhow!(err));
                     }
                 }
@@ -133,29 +139,55 @@ pub async fn log_channel_view(
 pub async fn log_item_stream(
     state: State<AppState>,
     Path(item_id): Path<String>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> impl IntoResponse {
+    let user = addr.ip().to_string();
     let item_id = item_id.to_ascii_lowercase();
     tracing::info!("Log item stream for item with id {}", item_id);
 
     let item_stream_key = item_stream_key(&item_id);
+    let user_stream_key = user_stream_key(&user, &item_id);
 
     match state.pool.get().await {
         Ok(mut conn) => {
-            // Increment the count at the current timestamp by 1
-            if let Err(err) = conn
-                .ts_incrby(
-                    &item_stream_key,
-                    1,
-                    Some(chrono::Utc::now().timestamp_millis()),
-                )
-                .await
-            {
-                tracing::error!(
-                    "Error logging item stream for {}: {:?}",
-                    item_stream_key,
-                    err
-                );
-                return internal_error(anyhow!(err));
+            let ttl_seconds = 600; // 10 minutes in seconds
+
+            let set_result: Result<bool, RedisError> = redis::cmd("SET")
+                .arg(&user_stream_key)
+                .arg(&item_id)
+                .arg("NX")
+                .arg("EX")
+                .arg(ttl_seconds)
+                .query_async(&mut *conn)
+                .await;
+
+            match set_result {
+                Ok(true) => {
+                    tracing::info!("Set view and rate limit for user");
+                    // Increment the count at the current timestamp by 1
+                    if let Err(err) = conn
+                        .ts_incrby(
+                            &item_stream_key,
+                            1,
+                            Some(chrono::Utc::now().timestamp_millis()),
+                        )
+                        .await
+                    {
+                        tracing::error!(
+                            "Error logging item stream for {}: {:?}",
+                            item_stream_key,
+                            err
+                        );
+                        return internal_error(anyhow!(err));
+                    }
+                }
+                Ok(false) => {
+                    tracing::info!("User already viewed item within the last 10 minutes");
+                }
+                Err(err) => {
+                    tracing::error!("Error applying rate limit for {}: {:?}", user, err);
+                    return internal_error(anyhow!(err));
+                }
             }
         }
         Err(err) => {

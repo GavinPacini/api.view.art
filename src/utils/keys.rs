@@ -5,6 +5,7 @@ pub const CHANNEL_KEY: &str = "channel";
 pub const CHANNEL_VIEW_KEY: &str = "channel_views";
 pub const ITEM_STREAM_KEY: &str = "item_streams";
 pub const USER_VIEW_KEY: &str = "user_views";
+pub const USER_STREAM_KEY: &str = "user_streams";
 pub const NONCE_KEY: &str = "nonce";
 
 /// Returns an ethers style address key, no longer used in the DB
@@ -34,6 +35,15 @@ pub fn user_view_key(user: &str, channel: &str) -> String {
         USER_VIEW_KEY,
         user.to_ascii_lowercase(),
         channel.to_ascii_lowercase()
+    )
+}
+
+pub fn user_stream_key(user: &str, item_caid: &str) -> String {
+    format!(
+        "{}:{}:{}",
+        USER_STREAM_KEY,
+        user.to_ascii_lowercase(),
+        item_caid.to_ascii_lowercase()
     )
 }
 
@@ -113,6 +123,15 @@ mod tests {
 
         let key = user_view_key("TEST", "TESTCHANNEL");
         assert_eq!(key, "user_views:test:testchannel");
+    }
+
+    #[test]
+    fn test_user_stream_key() {
+        let key = user_stream_key("test", "testitem");
+        assert_eq!(key, "user_streams:test:testitem");
+
+        let key = user_stream_key("TEST", "TESTITEM");
+        assert_eq!(key, "user_streams:test:testitem");
     }
 
     #[test]
