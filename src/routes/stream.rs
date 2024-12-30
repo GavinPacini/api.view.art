@@ -122,6 +122,8 @@ pub async fn log_channel_view(
     if set_result {
         tracing::info!("Set view and rate limit for user");
         let now = chrono::Utc::now().timestamp_millis();
+
+        // Increment the TimeSeries view count
         conn.ts_incrby(&channel_view_key, 1, Some(now))
             .await
             .map_err(|err| {
@@ -132,7 +134,7 @@ pub async fn log_channel_view(
                 )
             })?;
 
-        // Check and update top N sorted sets for each time range
+        // Update the top 30 sorted sets for each time range
         let time_ranges = [
             ("top_channels_daily", 24 * 60 * 60 * 1000), // 24 hours
             ("top_channels_weekly", 7 * 24 * 60 * 60 * 1000), // 7 days
@@ -140,6 +142,7 @@ pub async fn log_channel_view(
         ];
 
         for (sorted_set_key, retention) in time_ranges.iter() {
+            // Calculate total views for the current time range
             let start_time = now - retention;
             let view_count: usize = redis::cmd("TS.RANGE")
                 .arg(&channel_view_key)
@@ -150,9 +153,11 @@ pub async fn log_channel_view(
                 .map(|data_points: Vec<(i64, i64)>| data_points.len())
                 .unwrap_or(0);
 
+            // Get the current score for the channel in the sorted set
             let current_score: Option<f64> = conn.zscore(sorted_set_key, &channel).await.ok();
 
             if let Some(score) = current_score {
+                // If the channel is already in the sorted set, update its score if the new count is higher
                 if view_count as f64 > score {
                     conn.zadd(sorted_set_key, &channel, view_count as f64)
                         .await
@@ -171,6 +176,7 @@ pub async fn log_channel_view(
                         })?;
                 }
             } else {
+                // If the channel is not already in the sorted set, check if it qualifies
                 let scores: Vec<(String, f64)> = redis::cmd("ZRANGEBYSCORE")
                     .arg(sorted_set_key)
                     .arg("-inf")
@@ -207,7 +213,8 @@ pub async fn log_channel_view(
                 }
             }
 
-            conn.zremrangebyrank(sorted_set_key, 0, -31)
+            // Trim the sorted set to keep only the top 30 channels
+            conn.zremrangebyrank(sorted_set_key, 30, -1)
                 .await
                 .map_err(|err| {
                     tracing::error!("Error trimming sorted set {}: {:?}", sorted_set_key, err);
