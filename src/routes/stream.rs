@@ -322,3 +322,136 @@ impl<T: ConnectionLike + Send> TimeSeriesCommands for T {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppState;
+    use bb8_redis::{bb8::Pool, RedisConnectionManager};
+    use redis::AsyncCommands;
+
+    async fn get_redis_connection() -> redis::aio::Connection {
+        let manager = RedisConnectionManager::new("redis://127.0.0.1/").unwrap();
+        let pool = Pool::builder().build(manager).await.unwrap();
+        pool.get().await.unwrap()
+    }
+
+    async fn setup_test_data(conn: &mut redis::aio::Connection) {
+        // Clear existing data
+        conn.flushdb().await.unwrap();
+
+        // Create test TimeSeries keys and sorted sets
+        conn.ts_create("channel_views:channel1", 24 * 60 * 60 * 1000).await.unwrap();
+        conn.ts_add("channel_views:channel1", "*", 1).await.unwrap();
+
+        conn.zadd("top_channels_daily", "channel1", 1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_log_channel_view_existing_channel() {
+        let mut conn = get_redis_connection().await;
+        setup_test_data(&mut conn).await;
+
+        // Mock application state
+        let manager = RedisConnectionManager::new("redis://127.0.0.1/").unwrap();
+        let pool = Pool::builder().build(manager).await.unwrap();
+        let state = AppState { pool };
+
+        // Call the function
+        let result = log_channel_view(
+            State(state),
+            Path("channel1".to_string()),
+            ConnectInfo("127.0.0.1:8000".parse().unwrap()),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Verify TimeSeries data
+        let views: Vec<(i64, i64)> = conn
+            .ts_range("channel_views:channel1", "-", "+")
+            .await
+            .unwrap();
+        assert_eq!(views.len(), 2);
+
+        // Verify sorted set
+        let rank: Vec<(String, f64)> = conn
+            .zrange_withscores("top_channels_daily", 0, -1)
+            .await
+            .unwrap();
+        assert_eq!(rank.len(), 1);
+        assert_eq!(rank[0].0, "channel1");
+        assert!(rank[0].1 > 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_log_channel_view_new_channel() {
+        let mut conn = get_redis_connection().await;
+        setup_test_data(&mut conn).await;
+
+        // Mock application state
+        let manager = RedisConnectionManager::new("redis://127.0.0.1/").unwrap();
+        let pool = Pool::builder().build(manager).await.unwrap();
+        let state = AppState { pool };
+
+        // Call the function for a new channel
+        let result = log_channel_view(
+            State(state),
+            Path("channel2".to_string()),
+            ConnectInfo("127.0.0.1:8000".parse().unwrap()),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Verify TimeSeries data
+        let views: Vec<(i64, i64)> = conn
+            .ts_range("channel_views:channel2", "-", "+")
+            .await
+            .unwrap();
+        assert_eq!(views.len(), 1);
+
+        // Verify sorted set
+        let rank: Vec<(String, f64)> = conn
+            .zrange_withscores("top_channels_daily", 0, -1)
+            .await
+            .unwrap();
+        assert_eq!(rank.len(), 2);
+        assert!(rank.iter().any(|(channel, _)| channel == "channel2"));
+    }
+
+    #[tokio::test]
+    async fn test_log_channel_view_sorted_set_trimming() {
+        let mut conn = get_redis_connection().await;
+        setup_test_data(&mut conn).await;
+
+        // Add 31 channels to the sorted set
+        for i in 2..=32 {
+            conn.zadd("top_channels_daily", format!("channel{}", i), i)
+                .await
+                .unwrap();
+        }
+
+        // Mock application state
+        let manager = RedisConnectionManager::new("redis://127.0.0.1/").unwrap();
+        let pool = Pool::builder().build(manager).await.unwrap();
+        let state = AppState { pool };
+
+        // Call the function for an existing channel
+        let result = log_channel_view(
+            State(state),
+            Path("channel1".to_string()),
+            ConnectInfo("127.0.0.1:8000".parse().unwrap()),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Verify sorted set size
+        let rank: Vec<(String, f64)> = conn
+            .zrange_withscores("top_channels_daily", 0, -1)
+            .await
+            .unwrap();
+        assert_eq!(rank.len(), 30);
+    }
+}
