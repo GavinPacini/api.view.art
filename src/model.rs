@@ -29,8 +29,8 @@ pub struct Item {
     pub artist: Option<String>,
     pub url: Url,
     pub thumbnail_url: Url,
-    #[serde(default = "default_external_url")]
-    pub external_url: Url,
+    #[serde(default)]
+    pub external_url: Option<Url>,
     #[serde(default = "default_item_rotation_angle")]
     pub rotation_angle: u32,
     pub apply_matte: bool,
@@ -123,10 +123,6 @@ impl ChannelContent {
 }
 
 // ChannelContentV4
-
-fn default_external_url() -> Url {
-    Url::parse("about:blank").expect("Default URL is valid")
-}
 
 fn default_shared_with() -> Vec<Address> {
     vec![]
