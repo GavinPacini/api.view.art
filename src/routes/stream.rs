@@ -98,16 +98,11 @@ pub async fn log_channel_view(
         ));
     }
 
-    let ttl_seconds = if cfg!(test) {
-        0 // No rate limit during tests
-    } else {
-        600 // 10 minutes in seconds
-    };
-
     let set_result = if cfg!(test) {
-        // Skip rate limiting in tests
-        true
+        true // Skip rate limiting in tests
     } else {
+        let ttl_seconds = 600; // 10 minutes in seconds
+
         redis::cmd("SET")
             .arg(&user_view_key)
             .arg(&channel)

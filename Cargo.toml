@@ -53,4 +53,4 @@ eventsource-stream = "0.2"
 test-log = { version = "0.2.16", features = ["trace"] }
 
 [features]
-integration = []  # Feature flag for integration tests
+integration = []
