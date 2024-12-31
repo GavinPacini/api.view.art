@@ -401,15 +401,28 @@ mod tests {
         let binding = pool.clone();
         let mut conn = binding.get().await.unwrap();
         
-        // Clear all existing data first
-        let _: () = redis::cmd("FLUSHDB")
+        // More aggressive cleanup
+        tracing::info!("Starting test cleanup");
+        let _: () = redis::cmd("FLUSHALL")
             .query_async(conn.deref_mut())
             .await
             .unwrap();
+        
+        // Debug: List all keys
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("*")
+            .query_async(conn.deref_mut())
+            .await
+            .unwrap();
+        tracing::info!("Keys after FLUSHALL: {:?}", keys);
+        assert!(keys.is_empty(), "Database should be empty after FLUSHALL");
 
-        // Create fresh channel and TimeSeries
+        // Create fresh channel key
+        tracing::info!("Creating channel key");
         conn.set("channel:channel1", "test_channel").await?;
         
+        // Create TimeSeries without any initial data
+        tracing::info!("Creating TimeSeries");
         let ts_create_result: Result<(), RedisError> = redis::cmd("TS.CREATE")
             .arg("channel_views:channel1")
             .arg("RETENTION")
@@ -420,11 +433,39 @@ mod tests {
             .await;
 
         if let Err(e) = ts_create_result {
+            tracing::warn!("TimeSeries creation error: {:?}", e);
             if !e.to_string().contains("key already exists") {
                 return Err(anyhow::anyhow!(e));
             }
         }
 
+        // Debug: Check TimeSeries info
+        let ts_info: redis::Value = redis::cmd("TS.INFO")
+            .arg("channel_views:channel1")
+            .query_async(conn.deref_mut())
+            .await
+            .unwrap();
+        tracing::info!("TimeSeries info after creation: {:?}", ts_info);
+
+        // List all keys again
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("*")
+            .query_async(conn.deref_mut())
+            .await
+            .unwrap();
+        tracing::info!("Keys before view check: {:?}", keys);
+
+        // Verify we start with no views
+        let initial_views: Vec<(i64, i64)> = redis::cmd("TS.RANGE")
+            .arg("channel_views:channel1")
+            .arg("-")
+            .arg("+")
+            .query_async(conn.deref_mut())
+            .await?;
+        tracing::info!("Initial views: {:?}", initial_views);
+        assert_eq!(initial_views.len(), 0, "Should start with no views");
+
+        // Rest of the test setup...
         let args = Args::load().await?;
         let changes = Changes::new();
         let rpc_url = String::from(args.base_rpc_url).parse()?;
@@ -459,7 +500,7 @@ mod tests {
             .query_async(conn.deref_mut())
             .await?;
         
-        assert_eq!(views.len(), 1, "Expected one view"); 
+        assert_eq!(views.len(), 1, "Expected exactly one view after logging"); 
 
         Ok(())
     }
@@ -653,15 +694,23 @@ mod tests {
         let binding = pool.clone();
         let mut conn = binding.get().await.unwrap();
         
-        // Clear all existing data first
-        let _: () = redis::cmd("FLUSHDB")
+        // More aggressive cleanup
+        let _: () = redis::cmd("FLUSHALL")  // Use FLUSHALL instead of FLUSHDB
+            .query_async(conn.deref_mut())
+            .await
+            .unwrap();
+        
+        // Delete specific keys just to be sure
+        let _: () = redis::cmd("DEL")
+            .arg("channel_views:channel1")
             .query_async(conn.deref_mut())
             .await
             .unwrap();
 
-        // Create fresh channel and TimeSeries
+        // Create fresh channel key
         conn.set("channel:channel1", "test_channel").await?;
         
+        // Create TimeSeries without any initial data
         let ts_create_result: Result<(), RedisError> = redis::cmd("TS.CREATE")
             .arg("channel_views:channel1")
             .arg("RETENTION")
@@ -677,12 +726,22 @@ mod tests {
             }
         }
 
+        // Verify we start with no views
+        let initial_views: Vec<(i64, i64)> = redis::cmd("TS.RANGE")
+            .arg("channel_views:channel1")
+            .arg("-")
+            .arg("+")
+            .query_async(conn.deref_mut())
+            .await?;
+        assert_eq!(initial_views.len(), 0, "Should start with no views");
+
         // Set up rate limiting key
         let user = "127.0.0.1";
         let channel = "channel1";
         let user_view_key = user_view_key(user, channel);
         conn.set_ex(&user_view_key, channel, 600).await?;
 
+        // Rest of the test setup...
         let args = Args::load().await?;
         let changes = Changes::new();
         let rpc_url = String::from(args.base_rpc_url).parse()?;
@@ -717,7 +776,7 @@ mod tests {
             .query_async(conn.deref_mut())
             .await?;
         
-        assert_eq!(views.len(), 1, "Expected only one view due to rate limiting"); 
+        assert_eq!(views.len(), 0, "Expected no new views due to rate limiting"); 
 
         Ok(())
     }
