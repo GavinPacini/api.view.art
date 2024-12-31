@@ -375,7 +375,7 @@ mod tests {
                                 assert!(items[0].id == "eip155:1/erc721:0x06012c8cf97BEaD5deAe237070F9587f8E7A266d/771769"
                                     .parse::<AssetId>()
                                     .unwrap());
-                                    assert!(description == "test description");
+                                assert!(description == "test description");
                                 assert!(display.item_duration == 60);
                                 assert!(display.background_color == *"#ffffff".to_string());
                                 assert!(!display.show_attribution);
