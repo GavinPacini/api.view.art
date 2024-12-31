@@ -37,10 +37,6 @@ use {
     },
 };
 
-struct TestContext {
-    pool: bb8::Pool<RedisConnectionManager>,
-}
-
 pub async fn get_channel_view_metrics(
     state: State<AppState>,
     Path(channel): Path<String>,
@@ -346,6 +342,12 @@ impl<T: ConnectionLike + Send> TimeSeriesCommands for T {
     }
 }
 
+#[cfg(feature = "integration")]
+struct TestContext {
+    pool: bb8::Pool<RedisConnectionManager>,
+}
+
+#[cfg(feature = "integration")]
 impl TestContext {
     async fn new() -> Self {
         // Use atomic counter to get unique DB number for each test
@@ -424,6 +426,7 @@ impl TestContext {
     }
 }
 
+#[cfg(feature = "integration")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_log_channel_view_existing_channel() -> Result<(), anyhow::Error> {
     let ctx = TestContext::new().await;
@@ -492,6 +495,7 @@ async fn test_log_channel_view_existing_channel() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[cfg(feature = "integration")]
 #[tokio::test]
 async fn test_log_channel_view_new_channel() -> Result<(), anyhow::Error> {
     let ctx = TestContext::new().await;
@@ -526,6 +530,7 @@ async fn test_log_channel_view_new_channel() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[cfg(feature = "integration")]
 #[tokio::test]
 async fn test_log_channel_view_sorted_set_update() -> Result<(), anyhow::Error> {
     let ctx = TestContext::new().await;
@@ -567,6 +572,7 @@ async fn test_log_channel_view_sorted_set_update() -> Result<(), anyhow::Error> 
     Ok(())
 }
 
+#[cfg(feature = "integration")]
 #[tokio::test]
 async fn test_log_channel_view_sorted_set_trimming() -> Result<(), anyhow::Error> {
     let ctx = TestContext::new().await;
@@ -608,6 +614,7 @@ async fn test_log_channel_view_sorted_set_trimming() -> Result<(), anyhow::Error
     Ok(())
 }
 
+#[cfg(feature = "integration")]
 #[tokio::test]
 async fn test_log_channel_view_rate_limiting() -> Result<(), anyhow::Error> {
     let ctx = TestContext::new().await;
