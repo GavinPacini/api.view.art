@@ -7,6 +7,7 @@ pub const ITEM_STREAM_KEY: &str = "item_streams";
 pub const USER_VIEW_KEY: &str = "user_views";
 pub const USER_STREAM_KEY: &str = "user_streams";
 pub const NONCE_KEY: &str = "nonce";
+pub const TOP_CHANNELS_KEY: &str = "top_channels";
 
 /// Returns an ethers style address key, no longer used in the DB
 pub fn old_address_key(address: &Address) -> String {
@@ -45,6 +46,14 @@ pub fn user_stream_key(user: &str, item_caid: &str) -> String {
         user.to_ascii_lowercase(),
         item_caid.to_ascii_lowercase()
     )
+}
+
+pub fn top_channels_key_all_channels(range: &str) -> String {
+    format!("{}:{}:*", TOP_CHANNELS_KEY, range)
+}
+
+pub fn top_channels_key_specified_channel(range: &str, channel: &str) -> String {
+    format!("{}:{}:{}", TOP_CHANNELS_KEY, range, channel)
 }
 
 pub fn nonce_key(address: &Address, chain_id: u64) -> String {
@@ -132,6 +141,24 @@ mod tests {
 
         let key = user_stream_key("TEST", "TESTITEM");
         assert_eq!(key, "user_streams:test:testitem");
+    }
+
+    #[test]
+    fn test_top_channels_key_all_channels() {
+        let key = top_channels_key_all_channels("daily");
+        assert_eq!(key, "top_channels:daily:*");
+
+        let key = top_channels_key_all_channels("DAILY");
+        assert_eq!(key, "top_channels:daily:*");
+    }
+
+    #[test]
+    fn test_top_channels_key_specified_channel() {
+        let key = top_channels_key_specified_channel("daily", "testchannel");
+        assert_eq!(key, "top_channels:daily:testchannel");
+
+        let key = top_channels_key_specified_channel("DAILY", "TESTCHANNEL");
+        assert_eq!(key, "top_channels:daily:testchannel");
     }
 
     #[test]
