@@ -178,22 +178,17 @@ pub async fn log_channel_view(
                         match scan_result {
                             Ok((next_cursor, keys)) => {
                                 for key in keys {
-                                    let range_result: Result<Vec<(String, String)>, _> =
-                                        redis::cmd("TS.RANGE")
+                                    let get_result: Result<Option<(i64, i64)>, _> = 
+                                        redis::cmd("TS.GET")
                                             .arg(&key)
-                                            .arg(start_time)
-                                            .arg(now)
                                             .query_async(&mut *conn)
                                             .await;
 
-                                    if let Ok(data_points) = range_result {
-                                        let count = data_points.len(); // Count each entry
-                                        if count > 0 {
-                                            let channel_name = key
-                                                .trim_start_matches("channel_views:")
-                                                .to_string();
-                                            channels_with_counts.insert(channel_name, count);
-                                        }
+                                    if let Ok(Some((_, value))) = get_result {
+                                        let channel_name = key
+                                            .trim_start_matches("channel_views:")
+                                            .to_string();
+                                        channels_with_counts.insert(channel_name, value as usize);
                                     }
                                 }
 
@@ -267,15 +262,15 @@ pub async fn log_channel_view(
                         }
                     }
 
-                    let shouldPrune = !channel_exists && sorted_channels.len() == top_channels_count;
-                    if shouldPrune {
-                        let minChannelKey = format!("top_channels:{}:{}", time_range_key, minChannel.0);
+                    let shouldDelete = shouldAddChannel && sorted_channels.len() >= top_channels_count;
+                    tracing::info!("Should delete: {}, {}, {}, {}", shouldDelete, shouldAddChannel, sorted_channels.len(), top_channels_count);
+                    if shouldDelete {
                         let delTimeRangeResult: Result<(), _> = redis::cmd("DEL")
-                            .arg(&minChannelKey)
+                            .arg(&minChannel.0)
                             .query_async(&mut *conn)
                             .await;
 
-                        tracing::info!("Pruning channel {}", minChannel.0);
+                        tracing::info!("Delete result: {:?}, {}", delTimeRangeResult, minChannel.0);
                     }
 
                 }
