@@ -48,12 +48,8 @@ pub fn user_stream_key(user: &str, item_caid: &str) -> String {
     )
 }
 
-pub fn top_channels_key_all_channels(range: &str) -> String {
-    format!("{}:{}:*", TOP_CHANNELS_KEY, range)
-}
-
-pub fn top_channels_key_specified_channel(range: &str, channel: &str) -> String {
-    format!("{}:{}:{}", TOP_CHANNELS_KEY, range, channel)
+pub fn top_channels_key(range: &str) -> String {
+    format!("{}:{}", TOP_CHANNELS_KEY, range)
 }
 
 pub fn nonce_key(address: &Address, chain_id: u64) -> String {
@@ -144,20 +140,11 @@ mod tests {
     }
 
     #[test]
-    fn test_top_channels_key_all_channels() {
-        let key = top_channels_key_all_channels("daily");
-        assert_eq!(key, "top_channels:daily:*");
-
-        let key = top_channels_key_all_channels("DAILY");
-        assert_eq!(key, "top_channels:daily:*");
-    }
-
-    #[test]
-    fn test_top_channels_key_specified_channel() {
-        let key = top_channels_key_specified_channel("daily", "testchannel");
+    fn test_top_channels_key() {
+        let key = top_channels_key("daily", "testchannel");
         assert_eq!(key, "top_channels:daily:testchannel");
 
-        let key = top_channels_key_specified_channel("DAILY", "TESTCHANNEL");
+        let key = top_channels_key("DAILY", "TESTCHANNEL");
         assert_eq!(key, "top_channels:daily:testchannel");
     }
 

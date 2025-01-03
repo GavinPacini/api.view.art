@@ -6,8 +6,7 @@ use {
                 channel_key,
                 channel_view_key,
                 item_stream_key,
-                top_channels_key_all_channels,
-                top_channels_key_specified_channel,
+                top_channels_key,
                 user_stream_key,
                 user_view_key,
             },
@@ -140,150 +139,247 @@ pub async fn log_channel_view(
             })?;
 
         let time_ranges = [
-            ("daily", 24 * 60 * 60 * 1000),        // 24 hours
+            ("daily", 24 * 60 * 60),        // 24 hours
             // ("weekly", 7 * 24 * 60 * 60 * 1000),   // 7 days
             // ("monthly", 30 * 24 * 60 * 60 * 1000), // 30 days
         ];
 
         let top_channels_count = 10;
 
-        for (sorted_set_key, retention) in time_ranges.iter() {
+        for (time_range_key, retention) in time_ranges.iter() {
             // Calculate total views for the current time range
-            let start_time = now - retention;
-            let top_channels_key_all_channels = top_channels_key_all_channels(sorted_set_key);
-            let top_channels_key_specified_channel = top_channels_key_specified_channel(sorted_set_key, &channel);
+            let start_time = now - (retention * 1000);
+            let top_channels_key = top_channels_key(time_range_key);
             let view_count: usize = redis::cmd("TS.RANGE")
                 .arg(&channel_view_key)
                 .arg(start_time)
                 .arg(now)
                 .query_async(&mut *conn)
                 .await
-                .map(|data_points: Vec<(i64, i64)>| data_points.len())
-                .unwrap_or(0);
-            let view_count = view_count as i64;
+                .unwrap_or_default();
+                // .map(|data_points: Vec<(i64, i64)>| data_points.len())
+                // .unwrap_or(0);
 
-            tracing::info!("Views count {}: {}", view_count, sorted_set_key);
+            tracing::info!("Views count {}: {}", view_count, time_range_key);
 
-            // Get the current score for the channel in the hash
-            let current_score = redis::cmd("HGET")
-                .arg(top_channels_key_specified_channel.clone())
-                .arg("views")
-                .query_async(&mut *conn)
-                .await
-                .unwrap_or(None);
+            let timeRangeViewCountKey = format!("top_channels:{}:{}", time_range_key, channel);
 
-            // Get all scores for the top channels
-            
-            let mut scores: Vec<(String, i64)> = Vec::new();
-            
-            // Get all matching keys
-            let keys: Vec<String> = redis::cmd("HSCAN")
-                .arg(&top_channels_key_all_channels.clone())
+            let timeRangeViewCountResult = redis::cmd("TS.GET")
+                .arg(timeRangeViewCountKey)
                 .query_async(&mut *conn)
                 .await
                 .unwrap_or_default();
 
-            tracing::info!("Keys: {:?}", keys);
+            if let Some(timeRangeViewCount) = timeRangeViewCountResult {
+                tracing::info!("Time range view count for {}: {}", channel, timeRangeViewCount);
 
-            // For each key, get the "views" value
-            for key in keys {
-                if let Ok(views) = redis::cmd("HGET")
-                    .arg(&key)
-                    .arg("views")
+                let delTimeRangeResult = redis::cmd("DEL")
+                    .arg(timeRangeViewCountKey)
                     .query_async(&mut *conn)
                     .await
-                {
-                    if let Some(view_count) = views {
-                        scores.push((key, view_count));
-                    }
-                }
-            }
-        
-            scores.sort_by(|a, b| b.1.cmp(&a.1));
+                    .unwrap_or_default();
 
-            tracing::info!("Scores: {:?}", scores);
+                
+
+                // print each data point in timeRangeViewCount
+                for data_point in view_count {
+
+                    
+                    let dataTimestamp = data_point.0;
+
+                    let dataRetention = dataTimestamp + retention - now;
+
+                    tracing::info!("Data retention: {}", dataRetention);
+
+
+                    let dataViewCount = data_point.1;
+
+                    let dataPointAddResult = redis::cmd("TS.ADD")
+                        .arg(timeRangeViewCountKey)
+                        .arg(dataTimeStamp)
+                        .arg(dataViewCount)
+                        .arg("RETENTION")
+                        .arg(dataRetention)
+                        .query_async(&mut *conn)
+                        .await
+                        .unwrap_or_default();
+                }
+
+
+            } else {
+                tracing::info!("Time range view count for {} not found", channel);
+            }
+
+            // // Get the current score for the channel in the hash
+            // let current_score: Option<i64> = redis::cmd("HGET")
+            //     .arg(top_channels_key.clone())
+            //     .arg(&channel)
+            //     .query_async(&mut *conn)
+            //     .await
+            //     .unwrap_or(None);
+
+            // // Get all scores for the top channels
+            // let channel_scores: Vec<(String, i64)> = redis::cmd("HGETALL")
+            //     .arg(top_channels_key.clone())
+            //     .query_async(&mut *conn)
+            //     .await
+            //     .unwrap_or_default();
+
+            // let channel_strings: Vec<String> =
+            //     channel_scores.iter().map(|(channel, _)| channel.clone()).collect();
+
+            // // Get the TTL for the top channels
+            // let ttls: Vec<i64> = redis::cmd("HEXPIRETIME")
+            //     .arg("top_channels:daily")
+            //     .arg("FIELDS")
+            //     .arg(channel_strings.len() as i64)
+            //     .arg(&channel_strings)
+            //     .query_async(&mut *conn)
+            //     .await
+            //     .unwrap_or_default();
+
+            // // Combine channel name, score, and TTL
+            // let mut channel_scores_ttls: Vec<(String, i64, i64)> = channel_scores
+            //     .clone()
+            //     .into_iter()
+            //     .zip(ttls.iter())
+            //     .map(|((channel, score), ttl)| (channel, score, *ttl))
+            //     .collect();
+
+            //     channel_scores_ttls.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
 
             let mut added_score = false;
 
             if let Some(score) = current_score {
                 tracing::info!("Current score for channel {}: {}", channel, score);
-                // If the channel is already in the sorted set, update its score if the new
-                // count is higher
 
-                if view_count > score {
-                    redis::cmd("HSET")
-                        .arg(top_channels_key_specified_channel.clone())
-                        .arg("views")
-                        .arg(view_count)
-                        .arg("HEXPIRE")
+                redis::cmd("HSET")
+                    .arg(top_channels_key.clone())
+                    .arg(&channel)
+                    .arg(view_count as i64)
+                    .query_async(&mut *conn)
+                    .await
+                    .map_err(|err| {
+                        tracing::error!(
+                            "Error updating channel views for channel {}: {:?}",
+                            channel,
+                            err
+                        );
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            json!({ "error": "Redis error while updating channel views" })
+                                .to_string(),
+                        )
+                    })?;
+
+                redis::cmd("HEXPIRE")
+                        .arg(top_channels_key.clone())
                         .arg(retention)
+                        .arg("FIELDS")
+                        .arg(1)
+                        .arg(&channel)
                         .query_async(&mut *conn)
                         .await
                         .map_err(|err| {
                             tracing::error!(
-                                "Error updating channel {} in sorted set {}: {:?}",
+                                "Error updating expiration for channel {}: {:?}",
                                 channel,
-                                sorted_set_key,
                                 err
                             );
                             (
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                json!({ "error": "Redis error while updating sorted set" })
+                                json!({ "error": "Redis error while updating expiration for channel views" })
                                     .to_string(),
                             )
                         })?;
+
+                if let Some(pos) = channel_scores_ttls
+                    .iter()
+                    .position(|(ch, _, _)| ch == &channel)
+                {
+                    channel_scores_ttls[pos] = (channel.clone(), view_count as i64, *retention);
+                    tracing::info!("Updated score: {:?}", channel_scores_ttls);
                 }
             } else {
-                
-                let current_min_score = scores.last().map(|s| s.1).unwrap_or(0);
+                // If the channel is not already in the sorted set, check if it qualifies
+                let current_min_score = channel_scores.last().unwrap_or(&(String::new(), 0)).1;
 
                 tracing::info!("Current min score: {}", current_min_score);
 
-                if view_count > current_min_score || scores.len() < top_channels_count {
-                    redis::cmd("HINCRBY")
-                        .arg(top_channels_key_specified_channel.clone())
-                        .arg("views")
-                        .arg(view_count)
-                        .arg("HEXPIRE")
-                        .arg(retention)
+                if view_count as i64 > current_min_score || channel_scores.len() < top_channels_count {
+                    redis::cmd("HSET")
+                        .arg(top_channels_key.clone())
+                        .arg(&channel)
+                        .arg(view_count as i64)
                         .query_async(&mut *conn)
                         .await
                         .map_err(|err| {
                             tracing::error!(
-                                "Error updating channel {} in sorted set {}: {:?}",
+                                "Error updating channel views for channel {}: {:?}",
                                 channel,
-                                sorted_set_key,
                                 err
                             );
                             (
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                json!({ "error": "Redis error while updating sorted set" })
+                                json!({ "error": "Redis error while updating channel views" })
                                     .to_string(),
                             )
                         })?;
+
+                    redis::cmd("HEXPIRE")
+                        .arg(top_channels_key.clone())
+                        .arg(retention)
+                        .arg("FIELDS")
+                        .arg(1)
+                        .arg(&channel)
+                        .query_async(&mut *conn)
+                        .await
+                        .map_err(|err| {
+                            tracing::error!(
+                                "Error updating expiration for channel {}: {:?}",
+                                channel,
+                                err
+                            );
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                json!({ "error": "Redis error while updating expiration for channel views" })
+                                    .to_string(),
+                            )
+                        })?;
+
+                    channel_scores_ttls.push((channel.clone(), view_count as i64, *retention));
+                    tracing::info!("Added score: {:?}", channel_scores_ttls);
                     added_score = true;
                 }
             }
 
-            // tracing::info!("Added score: {}, Scores length: {}, Top channels count: {}", added_score, scores.len(), top_channels_count);
-            // if added_score && scores.len() >= top_channels_count {
+            tracing::info!(
+                "Added score: {}, Scores length: {}, Top channels count: {}",
+                added_score,
+                channel_scores_ttls.len(),
+                top_channels_count
+            );
+
+            let min_score = channel_scores_ttls.last().unwrap();
+            tracing::info!("Min score: {:?}", min_score);
+            // if scores.len() > top_channels_count {
             //     tracing::info!("Trimming hash values");
 
             //     let min_score = scores.last().unwrap().0.clone();
 
             //     tracing::info!("Min score: {}", min_score);
-            //     // Trim the values in the has to keep only the top 30 channels
-            //     redis::cmd("HDEL")
-            //         .arg(top_channels_key_all_channels.clone())
+            //     // Trim the values in the has to keep only the top 30
+            // channels     redis::cmd("HDEL")
+            //         .arg(top_channels_key.clone())
             //         .arg(min_score)
             //         .query_async(&mut *conn)
             //         .await
             //         .map_err(|err| {
-            //             tracing::error!("Error trimming sorted set {}: {:?}", sorted_set_key, err);
-            //             (
+            //             tracing::error!("Error trimming top {} channels:
+            // {:?}", time_range_key, err);             (
             //                 StatusCode::INTERNAL_SERVER_ERROR,
-            //                 json!({ "error": "Redis error while trimming sorted set" }).to_string(),
-            //             )
+            //                 json!({ "error": "Redis error while trimming top
+            // channels" }).to_string(),             )
             //         })?;
 
             //     tracing::info!("Trimmed hash values");
