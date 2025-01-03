@@ -159,10 +159,10 @@ pub async fn log_channel_view(
 
             match view_count {
                 Ok(dataPoints) => {
-                    tracing::info!("Got {} data points", dataPoints.len());
+                    // tracing::info!("Got {} data points", dataPoints.len());
 
                     let mut cursor = 0;
-                    let mut channels_with_counts: HashMap<String, usize> = HashMap::new();
+                    let mut channels_with_counts: HashMap<String, (usize, i64)> = HashMap::new();
 
                     // Get all top channels for the time range
                     loop {
@@ -184,11 +184,11 @@ pub async fn log_channel_view(
                                             .query_async(&mut *conn)
                                             .await;
 
-                                    if let Ok(Some((_, value))) = get_result {
+                                    if let Ok(Some((timestamp, value))) = get_result {
                                         let channel_name = key
                                             .trim_start_matches("channel_views:")
                                             .to_string();
-                                        channels_with_counts.insert(channel_name, value as usize);
+                                        channels_with_counts.insert(channel_name, (value as usize, timestamp));
                                     }
                                 }
 
@@ -203,10 +203,18 @@ pub async fn log_channel_view(
                         }
                     }
 
-                    // Sort the top channels by view count
-                    let mut sorted_channels: Vec<(String, usize)> =
-                        channels_with_counts.into_iter().collect();
-                    sorted_channels.sort_by(|a, b| b.1.cmp(&a.1));
+                    // Sort by view count (descending), then by timestamp (descending)
+                    let mut sorted_channels: Vec<(String, usize, i64)> = channels_with_counts
+                        .into_iter()
+                        .map(|(name, (views, timestamp))| (name, views, timestamp))
+                        .collect();
+                    sorted_channels.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)));
+                    
+                    // Convert to final format needed by rest of code
+                    let sorted_channels: Vec<(String, usize)> = sorted_channels
+                        .into_iter()
+                        .map(|(name, views, _)| (name, views))
+                        .collect();
 
                     // Map sorted channels to the desired format
                     let formatted_channels: Vec<_> = sorted_channels.clone()
@@ -219,7 +227,7 @@ pub async fn log_channel_view(
 
                     
                     let minChannel = sorted_channels.last().map(|(name, count)| (name.clone(), *count)).unwrap_or(("".to_string(), 0));
-                    tracing::info!("Min channel: {:?}", minChannel);
+                    // tracing::info!("Min channel: {:?}", minChannel);
 
                     let currentChannelKey=
                         format!("top_channels:{}:{}", time_range_key, channel);
@@ -227,10 +235,10 @@ pub async fn log_channel_view(
                     let channel_exists = sorted_channels
                         .iter()
                         .any(|(name, _)| name == &currentChannelKey);
-                    tracing::info!("Channel {} exists in top channels: {}", channel, channel_exists);
+                    // tracing::info!("Channel {} exists in top channels: {}", channel, channel_exists);
 
                     if channel_exists {
-                        tracing::info!("Channel already exists in top channels");
+                        // tracing::info!("Channel already exists in top channels");
                         let delTimeRangeResult: Result<(), _> = redis::cmd("DEL")
                             .arg(&currentChannelKey)
                             .query_async(&mut *conn)
@@ -238,14 +246,15 @@ pub async fn log_channel_view(
                     }
 
                     let shouldAddChannel = channel_exists || sorted_channels.len() < top_channels_count || dataPoints.len() > minChannel.1;
+                    tracing::info!("Should add channel: {}, {}, {}, {}, {}, {}", shouldAddChannel, channel_exists, sorted_channels.len(), top_channels_count, dataPoints.len(), minChannel.1);
                     if shouldAddChannel {
-                        tracing::info!("Adding channel to top channels");
+                        // tracing::info!("Adding channel to top channels");
                         for dataPoint in &dataPoints {
                             let dataTimestamp = dataPoint.0;
                             let dataRetention = (dataTimestamp + (retention * 1000) - now); // Convert to seconds
                             let dataViewCount = &dataPoint.1;
     
-                            tracing::info!("Timestamp: {}, Retention: {}", dataTimestamp, dataRetention);
+                            // tracing::info!("Timestamp: {}, Retention: {}", dataTimestamp, dataRetention);
     
                             let addResult: Result<(), _> = redis::cmd("TS.ADD")
                                 .arg(&currentChannelKey)
@@ -258,19 +267,19 @@ pub async fn log_channel_view(
                                 .query_async(&mut *conn)
                                 .await;
 
-                            tracing::info!("Add result: {:?}", addResult);
+                            // tracing::info!("Add result: {:?}", addResult);
                         }
                     }
 
-                    let shouldDelete = shouldAddChannel && sorted_channels.len() >= top_channels_count;
-                    tracing::info!("Should delete: {}, {}, {}, {}", shouldDelete, shouldAddChannel, sorted_channels.len(), top_channels_count);
+                    let shouldDelete = (!channel_exists && shouldAddChannel) && sorted_channels.len() >= top_channels_count;
+                    tracing::info!("Should delete: {}, {}, {}, {}", shouldDelete, channel_exists, sorted_channels.len(), top_channels_count);
                     if shouldDelete {
                         let delTimeRangeResult: Result<(), _> = redis::cmd("DEL")
                             .arg(&minChannel.0)
                             .query_async(&mut *conn)
                             .await;
 
-                        tracing::info!("Delete result: {:?}, {}", delTimeRangeResult, minChannel.0);
+                        // tracing::info!("Delete result: {:?}, {}", delTimeRangeResult, minChannel.0);
                     }
 
                 }
