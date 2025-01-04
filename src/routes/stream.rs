@@ -117,7 +117,9 @@ pub async fn log_channel_view(
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     json!({ "error": "Redis error while applying rate limit"
-    }).to_string(),             )
+                    })
+                    .to_string(),
+                )
             })?
     };
 
@@ -176,17 +178,17 @@ pub async fn log_channel_view(
                         match scan_result {
                             Ok((next_cursor, keys)) => {
                                 for key in keys {
-                                    let get_result: Result<Option<(i64, i64)>, _> = 
+                                    let get_result: Result<Option<(i64, i64)>, _> =
                                         redis::cmd("TS.GET")
                                             .arg(&key)
                                             .query_async(&mut *conn)
                                             .await;
 
                                     if let Ok(Some((timestamp, value))) = get_result {
-                                        let channel_name = key
-                                            .trim_start_matches("channel_views:")
-                                            .to_string();
-                                        channels_with_counts.insert(channel_name, (value as usize, timestamp));
+                                        let channel_name =
+                                            key.trim_start_matches("channel_views:").to_string();
+                                        channels_with_counts
+                                            .insert(channel_name, (value as usize, timestamp));
                                     }
                                 }
 
@@ -207,7 +209,7 @@ pub async fn log_channel_view(
                         .map(|(name, (views, timestamp))| (name, views, timestamp))
                         .collect();
                     sorted_channels.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)));
-                    
+
                     // Convert to final format needed by rest of code
                     let sorted_channels: Vec<(String, usize)> = sorted_channels
                         .into_iter()
@@ -215,7 +217,8 @@ pub async fn log_channel_view(
                         .collect();
 
                     // Map sorted channels to the desired format
-                    let formatted_channels: Vec<_> = sorted_channels.clone()
+                    let formatted_channels: Vec<_> = sorted_channels
+                        .clone()
                         .into_iter()
                         .take(top_channels_count)
                         .map(|(name, views)| json!({ "name": name, "views": views }))
@@ -223,18 +226,20 @@ pub async fn log_channel_view(
 
                     tracing::info!("Top channels: {:?}", formatted_channels);
 
-                    
-                    let min_channel = sorted_channels.last()
+                    let min_channel = sorted_channels
+                        .last()
                         .map(|(name, count)| (name.clone(), *count))
                         .unwrap_or(("".to_string(), 0));
                     // tracing::info!("Min channel: {:?}", minChannel);
 
-                    let current_channel_key = format!("top_channels:{}:{}", time_range_key, channel);
+                    let current_channel_key =
+                        format!("top_channels:{}:{}", time_range_key, channel);
                     // check if the channel is already in the top channels
                     let channel_exists = sorted_channels
                         .iter()
                         .any(|(name, _)| name == &current_channel_key);
-                    // tracing::info!("Channel {} exists in top channels: {}", channel, channel_exists);
+                    // tracing::info!("Channel {} exists in top channels: {}", channel,
+                    // channel_exists);
 
                     if channel_exists {
                         // tracing::info!("Channel already exists in top channels");
@@ -244,19 +249,28 @@ pub async fn log_channel_view(
                             .await;
                     }
 
-                    let should_add_channel = channel_exists || 
-                        sorted_channels.len() < top_channels_count || 
-                        data_points.len() > min_channel.1;
-                    tracing::info!("Should add channel: {}, {}, {}, {}, {}, {}", should_add_channel, channel_exists, sorted_channels.len(), top_channels_count, data_points.len(), min_channel.1);
+                    let should_add_channel = channel_exists
+                        || sorted_channels.len() < top_channels_count
+                        || data_points.len() > min_channel.1;
+                    tracing::info!(
+                        "Should add channel: {}, {}, {}, {}, {}, {}",
+                        should_add_channel,
+                        channel_exists,
+                        sorted_channels.len(),
+                        top_channels_count,
+                        data_points.len(),
+                        min_channel.1
+                    );
                     if should_add_channel {
                         // tracing::info!("Adding channel to top channels");
                         for data_point in &data_points {
                             let data_timestamp = data_point.0;
                             let data_retention = data_timestamp + (retention * 1000) - now;
                             let data_view_count = &data_point.1;
-    
-                            // tracing::info!("Timestamp: {}, Retention: {}", dataTimestamp, dataRetention);
-    
+
+                            // tracing::info!("Timestamp: {}, Retention: {}", dataTimestamp,
+                            // dataRetention);
+
                             let _add_result: Result<(), _> = redis::cmd("TS.ADD")
                                 .arg(&current_channel_key)
                                 .arg(data_timestamp)
@@ -272,18 +286,24 @@ pub async fn log_channel_view(
                         }
                     }
 
-                    let should_delete = (!channel_exists && should_add_channel) && 
-                        sorted_channels.len() >= top_channels_count;
-                    tracing::info!("Should delete: {}, {}, {}, {}", should_delete, channel_exists, sorted_channels.len(), top_channels_count);
+                    let should_delete = (!channel_exists && should_add_channel)
+                        && sorted_channels.len() >= top_channels_count;
+                    tracing::info!(
+                        "Should delete: {}, {}, {}, {}",
+                        should_delete,
+                        channel_exists,
+                        sorted_channels.len(),
+                        top_channels_count
+                    );
                     if should_delete {
                         let _del_time_range_result: Result<(), _> = redis::cmd("DEL")
                             .arg(&min_channel.0)
                             .query_async(&mut *conn)
                             .await;
 
-                        // tracing::info!("Delete result: {:?}, {}", delTimeRangeResult, minChannel.0);
+                        // tracing::info!("Delete result: {:?}, {}",
+                        // delTimeRangeResult, minChannel.0);
                     }
-
                 }
                 Err(err) => {
                     tracing::error!("Error getting view count: {:?}", err);
