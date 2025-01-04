@@ -21,6 +21,8 @@ use {
         response::IntoResponse,
         Json,
     },
+    bb8::PooledConnection,
+    bb8_redis::RedisConnectionManager,
     bb8_redis::redis::{aio::ConnectionLike, AsyncCommands, Cmd, RedisError, RedisResult},
     serde_json::json,
     std::{collections::HashMap, future::Future, net::SocketAddr, pin::Pin},
@@ -82,48 +84,16 @@ pub async fn log_channel_view(
         )
     })?;
 
-    // Check if the channel exists
-    let exists: bool = conn.exists::<_, bool>(&channel_key).await.map_err(|err| {
-        tracing::error!("Error checking if channel exists: {:?}", err);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            json!({ "error": "Redis error while checking existence" }).to_string(),
-        )
-    })?;
-
-    if !exists {
-        tracing::warn!("Channel {} does not exist", channel);
-        return Ok((
-            StatusCode::NOT_FOUND,
-            Json(json!({ "status": false, "error": "Channel does not exist" })).to_string(),
-        ));
+    match check_channel_exists(&mut conn, &channel).await {
+        Ok(_) => (),
+        Err((status, message)) => return Err((status, message)),
     }
 
-    let set_result = if cfg!(test) {
-        true // Skip rate limiting in tests
-    } else {
-        let ttl_seconds = 600; // 10 minutes in seconds
+    match check_rate_limit(&mut conn, &user_view_key, &channel).await {
+        Ok(_) => (),
+        Err((status, message)) => return Err((status, message)),
+    }
 
-        redis::cmd("SET")
-            .arg(&user_view_key)
-            .arg(&channel)
-            .arg("NX")
-            .arg("EX")
-            .arg(ttl_seconds)
-            .query_async(&mut *conn)
-            .await
-            .map_err(|err| {
-                tracing::error!("Error applying rate limit: {:?}", err);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    json!({ "error": "Redis error while applying rate limit"
-                    })
-                    .to_string(),
-                )
-            })?
-    };
-
-    if set_result {
         tracing::info!("Set view and rate limit for user");
         let now = chrono::Utc::now().timestamp_millis();
 
@@ -310,9 +280,6 @@ pub async fn log_channel_view(
                 }
             }
         }
-    } else {
-        tracing::info!("User already viewed channel within the last 10 minutes");
-    }
 
     Ok((StatusCode::OK, json!({ "status": true }).to_string()))
 }
@@ -407,4 +374,68 @@ impl<T: ConnectionLike + Send> TimeSeriesCommands for T {
             cmd.query_async(self).await
         })
     }
+}
+
+async fn check_channel_exists(
+    conn: &mut PooledConnection<'_, RedisConnectionManager>,
+    channel: &str,
+) -> Result<(), (StatusCode, String)> {
+    let channel_key = channel_key(channel);
+    let exists = conn
+        .exists::<_, bool>(&channel_key)
+        .await
+        .map_err(|err| {
+            tracing::error!("Error checking if channel exists: {:?}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "error": "Redis error while checking existence" }).to_string(),
+            )
+        })?;
+
+    if !exists {
+        tracing::warn!("Channel {} does not exist", channel);
+        return Err((
+            StatusCode::NOT_FOUND,
+            json!({ "error": "Channel does not exist" }).to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn check_rate_limit(
+    conn: &mut PooledConnection<'_, RedisConnectionManager>,
+    user_view_key: &str,
+    channel: &str,
+) -> Result<(), (StatusCode, String)> {
+    if cfg!(test) {
+        return Ok(()); // Skip rate limiting in tests
+    }
+
+    let ttl_seconds = 600; // 10 minutes in seconds
+    let set_result: bool = conn.set_nx(user_view_key, channel).await.map_err(|err| {
+        tracing::error!("Error applying rate limit: {:?}", err);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({ "error": "Redis error while applying rate limit" }).to_string(),
+        )
+    })?;
+
+    if !set_result {
+        tracing::info!("User already viewed channel within the last 10 minutes");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({ "error": "User already viewed channel within the last 10 minutes" }).to_string(),
+        ));
+    }
+
+    // Set expiration for the user rate limit key
+    conn.expire(user_view_key, ttl_seconds).await.map_err(|err| {
+        tracing::error!("Error setting expiration: {:?}", err);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({ "error": "Redis error while setting expiration" }).to_string(),
+        )
+    })?;
+
+    Ok(())
 }
