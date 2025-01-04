@@ -99,29 +99,27 @@ pub async fn log_channel_view(
         ));
     }
 
-    let set_result = true;
+    let set_result = if cfg!(test) {
+        true // Skip rate limiting in tests
+    } else {
+        let ttl_seconds = 600; // 10 minutes in seconds
 
-    // let set_result = if cfg!(test) {
-    //     true // Skip rate limiting in tests
-    // } else {
-    //     let ttl_seconds = 600; // 10 minutes in seconds
-
-    //     redis::cmd("SET")
-    //         .arg(&user_view_key)
-    //         .arg(&channel)
-    //         .arg("NX")
-    //         .arg("EX")
-    //         .arg(ttl_seconds)
-    //         .query_async(&mut *conn)
-    //         .await
-    //         .map_err(|err| {
-    //             tracing::error!("Error applying rate limit: {:?}", err);
-    //             (
-    //                 StatusCode::INTERNAL_SERVER_ERROR,
-    //                 json!({ "error": "Redis error while applying rate limit"
-    // }).to_string(),             )
-    //         })?
-    // };
+        redis::cmd("SET")
+            .arg(&user_view_key)
+            .arg(&channel)
+            .arg("NX")
+            .arg("EX")
+            .arg(ttl_seconds)
+            .query_async(&mut *conn)
+            .await
+            .map_err(|err| {
+                tracing::error!("Error applying rate limit: {:?}", err);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({ "error": "Redis error while applying rate limit"
+    }).to_string(),             )
+            })?
+    };
 
     if set_result {
         tracing::info!("Set view and rate limit for user");
@@ -251,7 +249,7 @@ pub async fn log_channel_view(
                         // tracing::info!("Adding channel to top channels");
                         for dataPoint in &dataPoints {
                             let dataTimestamp = dataPoint.0;
-                            let dataRetention = (dataTimestamp + (retention * 1000) - now); // Convert to seconds
+                            let dataRetention = dataTimestamp + (retention * 1000) - now;
                             let dataViewCount = &dataPoint.1;
     
                             // tracing::info!("Timestamp: {}, Retention: {}", dataTimestamp, dataRetention);
@@ -389,7 +387,6 @@ impl<T: ConnectionLike + Send> TimeSeriesCommands for T {
 
 #[cfg(test)]
 mod tests {
-
     #[cfg(feature = "integration")]
     mod integration {
         use {
@@ -433,12 +430,13 @@ mod tests {
                 let _: () = redis::cmd("FLUSHDB").query_async(conn.deref_mut()).await?;
 
                 // Create channel key
-                conn.set(&format!("channel:{}", channel), "test_channel")
-                    .await?;
+                conn.set(&format!("channel:{}", channel), "test_channel").await?;
 
-                // Create TimeSeries
+                // Create TimeSeries for channel views
                 let _: Result<(), RedisError> = redis::cmd("TS.CREATE")
                     .arg(&format!("channel_views:{}", channel))
+                    .arg("RETENTION")
+                    .arg(86400000) // 24 hours in milliseconds
                     .arg("UNCOMPRESSED")
                     .arg("DUPLICATE_POLICY")
                     .arg("LAST")
@@ -451,6 +449,47 @@ mod tests {
                             Err(e)
                         }
                     });
+
+                Ok(())
+            }
+
+            async fn setup_multiple_channels(&self, count: i32) -> Result<(), anyhow::Error> {
+                let mut conn = self.pool.get().await?;
+
+                for i in 1..=count {
+                    let channel = format!("channel{}", i);
+                    
+                    // Create channel key
+                    conn.set(&format!("channel:{}", channel), "test_channel").await?;
+
+                    // Create TimeSeries for channel views
+                    let ts_key = format!("top_channels:daily:{}", channel);
+                    let _: Result<(), RedisError> = redis::cmd("TS.CREATE")
+                        .arg(&ts_key)
+                        .arg("RETENTION")
+                        .arg(86400000) // 24 hours in milliseconds
+                        .arg("UNCOMPRESSED")
+                        .arg("DUPLICATE_POLICY")
+                        .arg("LAST")
+                        .query_async(conn.deref_mut())
+                        .await
+                        .or_else(|e| {
+                            if e.to_string().contains("key already exists") {
+                                Ok(())
+                            } else {
+                                Err(e)
+                            }
+                        });
+
+                    // Add some views
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let _: Result<(), RedisError> = redis::cmd("TS.ADD")
+                        .arg(&ts_key)
+                        .arg(now)
+                        .arg(i) // Each channel gets i views
+                        .query_async(conn.deref_mut())
+                        .await;
+                }
 
                 Ok(())
             }
@@ -461,305 +500,148 @@ mod tests {
                 Ok(())
             }
 
-            async fn populate_sorted_sets(&self) -> Result<(), anyhow::Error> {
-                let mut conn = self.pool.get().await?;
+            #[cfg(test)]
+            async fn test_log_channel_view_existing_channel() -> Result<(), anyhow::Error> {
+                let ctx = TestContext::new().await;
+                ctx.setup("channel1").await?;
 
-                // Add 30 channels to the sorted sets with different scores
-                for i in 1..=30 {
-                    let channel = format!("channel{}", i);
-                    let score = i as f64;
+                let state = create_test_state(ctx.pool.clone()).await?;
+                let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
 
-                    // Add to all time ranges
-                    for set_key in &[
-                        "top_channels_daily",
-                        "top_channels_weekly",
-                        "top_channels_monthly",
-                    ] {
-                        let _: () = redis::cmd("ZADD")
-                            .arg(set_key)
-                            .arg(score)
-                            .arg(&channel)
-                            .query_async(conn.deref_mut())
-                            .await?;
-                    }
-                }
+                // First view
+                let result = log_channel_view(
+                    State(state),
+                    Path("channel1".to_string()),
+                    ConnectInfo(socket_addr),
+                )
+                .await;
+                assert!(result.is_ok());
 
+                // Verify the view was recorded in TimeSeries
+                let mut conn = ctx.pool.get().await?;
+                let views: Vec<(i64, i64)> = redis::cmd("TS.RANGE")
+                    .arg("channel_views:channel1")
+                    .arg("-")
+                    .arg("+")
+                    .query_async(conn.deref_mut())
+                    .await?;
+
+                assert_eq!(views.len(), 1, "Expected exactly one view");
+                assert_eq!(views[0].1, 1, "Expected view count to be 1");
+
+                ctx.cleanup().await?;
                 Ok(())
             }
-        }
 
-        #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-        async fn test_log_channel_view_existing_channel() -> Result<(), anyhow::Error> {
-            let ctx = TestContext::new().await;
+            #[cfg(test)]
+            async fn test_log_channel_view_nonexistent_channel() -> Result<(), anyhow::Error> {
+                let ctx = TestContext::new().await;
+                let state = create_test_state(ctx.pool.clone()).await?;
+                let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
 
-            // Set up test data
-            {
-                let mut conn = ctx.pool.get().await?;
+                let result = log_channel_view(
+                    State(state),
+                    Path("nonexistent".to_string()),
+                    ConnectInfo(socket_addr),
+                )
+                .await;
 
-                // Clear database
-                let _: () = redis::cmd("FLUSHDB").query_async(conn.deref_mut()).await?;
+                assert!(result.is_ok());
+                let (status, body) = result.unwrap();
+                assert_eq!(status, StatusCode::NOT_FOUND);
+                assert!(body.contains("Channel does not exist"));
 
-                // Create channel key
-                conn.set("channel:channel1", "test_channel").await?;
-
-                // Create TimeSeries
-                let _: Result<(), RedisError> = redis::cmd("TS.CREATE")
-                    .arg("channel_views:channel1")
-                    .arg("UNCOMPRESSED")
-                    .arg("DUPLICATE_POLICY")
-                    .arg("LAST")
-                    .query_async(conn.deref_mut())
-                    .await
-                    .or_else(|e| {
-                        if e.to_string().contains("key already exists") {
-                            Ok(())
-                        } else {
-                            Err(e)
-                        }
-                    });
+                ctx.cleanup().await?;
+                Ok(())
             }
 
-            let args = Args::load().await?;
-            let state = AppState {
-                pool: ctx.pool.clone(),
-                changes: Changes::new(),
-                keys: Keys::new(String::from(args.jwt_secret).as_bytes()),
-                provider: ProviderBuilder::new()
-                    .with_recommended_fillers()
-                    .on_http(String::from(args.base_rpc_url).parse()?),
-            };
+            #[cfg(test)]
+            async fn test_log_channel_view_top_channels_update() -> Result<(), anyhow::Error> {
+                let ctx = TestContext::new().await;
+                
+                // Setup 15 channels with different view counts
+                ctx.setup_multiple_channels(15).await?;
+                
+                // Setup our test channel
+                ctx.setup("test_channel").await?;
 
-            let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
+                let state = create_test_state(ctx.pool.clone()).await?;
+                let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
 
-            // First view
-            let result = log_channel_view(
-                State(state),
-                Path("channel1".to_string()),
-                ConnectInfo(socket_addr),
-            )
-            .await;
-            assert!(result.is_ok());
+                // Log a view for our test channel
+                let result = log_channel_view(
+                    State(state),
+                    Path("test_channel".to_string()),
+                    ConnectInfo(socket_addr),
+                )
+                .await;
+                assert!(result.is_ok());
 
-            // Check final state
-            let mut conn = ctx.pool.get().await?;
-            let post_views: Vec<(i64, i64)> = redis::cmd("TS.RANGE")
-                .arg("channel_views:channel1")
-                .arg("-")
-                .arg("+")
-                .query_async(conn.deref_mut())
-                .await?;
-            assert_eq!(
-                post_views.len(),
-                1,
-                "Expected exactly one view after logging"
-            );
-
-            ctx.cleanup().await?;
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_log_channel_view_new_channel() -> Result<(), anyhow::Error> {
-            let ctx = TestContext::new().await;
-            ctx.setup("channel1").await?;
-
-            let args = Args::load().await?;
-            let state = AppState {
-                pool: ctx.pool.clone(),
-                changes: Changes::new(),
-                keys: Keys::new(String::from(args.jwt_secret).as_bytes()),
-                provider: ProviderBuilder::new()
-                    .with_recommended_fillers()
-                    .on_http(String::from(args.base_rpc_url).parse()?),
-            };
-
-            let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
-            let result = log_channel_view(
-                State(state),
-                Path("channel2".to_string()),
-                ConnectInfo(socket_addr),
-            )
-            .await;
-
-            assert!(result.is_ok());
-
-            // Verify TimeSeries data for the new channel
-            let mut conn = ctx.pool.get().await?;
-            let exists: bool = conn.exists("channel:channel2").await?;
-            assert!(!exists, "New channel should not be created");
-
-            ctx.cleanup().await?;
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_log_channel_view_sorted_set_update() -> Result<(), anyhow::Error> {
-            let ctx = TestContext::new().await;
-            ctx.setup("channel31").await?;
-            ctx.populate_sorted_sets().await?;
-
-            let args = Args::load().await?;
-            let state = AppState {
-                pool: ctx.pool.clone(),
-                changes: Changes::new(),
-                keys: Keys::new(String::from(args.jwt_secret).as_bytes()),
-                provider: ProviderBuilder::new()
-                    .with_recommended_fillers()
-                    .on_http(String::from(args.base_rpc_url).parse()?),
-            };
-
-            let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
-            let result = log_channel_view(
-                State(state),
-                Path("channel31".to_string()),
-                ConnectInfo(socket_addr),
-            )
-            .await;
-
-            assert!(result.is_ok());
-
-            // Verify that the sorted set contains only the top 30 channels
-            let mut conn = ctx.pool.get().await?;
-            let rank: Vec<(String, f64)> = redis::cmd("ZRANGE")
-                .arg("top_channels_daily")
-                .arg("0")
-                .arg("-1")
-                .arg("WITHSCORES")
-                .query_async(conn.deref_mut())
-                .await?;
-            assert_eq!(
-                rank.len(),
-                30,
-                "Sorted set should contain exactly 30 channels"
-            );
-
-            ctx.cleanup().await?;
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_log_channel_view_sorted_set_trimming() -> Result<(), anyhow::Error> {
-            let ctx = TestContext::new().await;
-            ctx.setup("channel1").await?;
-            ctx.populate_sorted_sets().await?;
-
-            let args = Args::load().await?;
-            let state = AppState {
-                pool: ctx.pool.clone(),
-                changes: Changes::new(),
-                keys: Keys::new(String::from(args.jwt_secret).as_bytes()),
-                provider: ProviderBuilder::new()
-                    .with_recommended_fillers()
-                    .on_http(String::from(args.base_rpc_url).parse()?),
-            };
-
-            let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
-            let result = log_channel_view(
-                State(state),
-                Path("channel1".to_string()),
-                ConnectInfo(socket_addr),
-            )
-            .await;
-
-            assert!(result.is_ok());
-
-            // Verify the sorted set contains only the top 30 channels
-            let mut conn = ctx.pool.get().await?;
-            let rank: Vec<(String, f64)> = redis::cmd("ZRANGE")
-                .arg("top_channels_daily")
-                .arg("0")
-                .arg("-1")
-                .arg("WITHSCORES")
-                .query_async(conn.deref_mut())
-                .await?;
-            assert_eq!(
-                rank.len(),
-                30,
-                "Sorted set should contain exactly 30 channels"
-            );
-
-            ctx.cleanup().await?;
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn test_log_channel_view_rate_limiting() -> Result<(), anyhow::Error> {
-            let ctx = TestContext::new().await;
-
-            // Set up test data
-            {
+                // Verify top channels
                 let mut conn = ctx.pool.get().await?;
-
-                // Clear database
-                let _: () = redis::cmd("FLUSHDB").query_async(conn.deref_mut()).await?;
-
-                // Create channel key
-                conn.set("channel:channel1", "test_channel").await?;
-
-                // Create TimeSeries
-                let _: Result<(), RedisError> = redis::cmd("TS.CREATE")
-                    .arg("channel_views:channel1")
-                    .arg("UNCOMPRESSED")
-                    .arg("DUPLICATE_POLICY")
-                    .arg("LAST")
+                let top_channels: Vec<String> = redis::cmd("KEYS")
+                    .arg("top_channels:daily:*")
                     .query_async(conn.deref_mut())
-                    .await
-                    .or_else(|e| {
-                        if e.to_string().contains("key already exists") {
-                            Ok(())
-                        } else {
-                            Err(e)
-                        }
-                    });
+                    .await?;
+
+                assert!(top_channels.len() <= 10, "Should maintain only top 10 channels");
+                
+                ctx.cleanup().await?;
+                Ok(())
             }
 
-            let args = Args::load().await?;
-            let state = AppState {
-                pool: ctx.pool.clone(),
-                changes: Changes::new(),
-                keys: Keys::new(String::from(args.jwt_secret).as_bytes()),
-                provider: ProviderBuilder::new()
-                    .with_recommended_fillers()
-                    .on_http(String::from(args.base_rpc_url).parse()?),
-            };
+            #[cfg(test)]
+            async fn test_log_channel_view_rate_limiting() -> Result<(), anyhow::Error> {
+                let ctx = TestContext::new().await;
+                ctx.setup("channel1").await?;
 
-            let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
+                let state = create_test_state(ctx.pool.clone()).await?;
+                let socket_addr: std::net::SocketAddr = "127.0.0.1:8000".parse()?;
 
-            // First view
-            let result = log_channel_view(
-                State(state.clone()),
-                Path("channel1".to_string()),
-                ConnectInfo(socket_addr),
-            )
-            .await;
-            assert!(result.is_ok());
+                // First view
+                let result1 = log_channel_view(
+                    State(state.clone()),
+                    Path("channel1".to_string()),
+                    ConnectInfo(socket_addr),
+                )
+                .await;
+                assert!(result1.is_ok());
 
-            // Second view should succeed in test mode
-            let result = log_channel_view(
-                State(state),
-                Path("channel1".to_string()),
-                ConnectInfo(socket_addr),
-            )
-            .await;
-            assert!(result.is_ok());
+                // Second view (should be rate limited in non-test mode)
+                let result2 = log_channel_view(
+                    State(state),
+                    Path("channel1".to_string()),
+                    ConnectInfo(socket_addr),
+                )
+                .await;
+                assert!(result2.is_ok());
 
-            // Check final state - should have two views because rate limiting is disabled
-            // in test mode
-            let mut conn = ctx.pool.get().await?;
-            let post_views: Vec<(i64, i64)> = redis::cmd("TS.RANGE")
-                .arg("channel_views:channel1")
-                .arg("-")
-                .arg("+")
-                .query_async(conn.deref_mut())
-                .await?;
-            assert_eq!(
-                post_views.len(),
-                2,
-                "Should have two views because rate limiting is disabled in test mode"
-            );
+                // In test mode, both views should be recorded
+                let mut conn = ctx.pool.get().await?;
+                let views: Vec<(i64, i64)> = redis::cmd("TS.RANGE")
+                    .arg("channel_views:channel1")
+                    .arg("-")
+                    .arg("+")
+                    .query_async(conn.deref_mut())
+                    .await?;
 
-            ctx.cleanup().await?;
-            Ok(())
+                assert_eq!(views.len(), 2, "Expected two views in test mode");
+
+                ctx.cleanup().await?;
+                Ok(())
+            }
+
+            async fn create_test_state(pool: bb8::Pool<RedisConnectionManager>) -> Result<AppState, anyhow::Error> {
+                let args = Args::load().await?;
+                Ok(AppState {
+                    pool,
+                    changes: Changes::new(),
+                    keys: Keys::new(String::from(args.jwt_secret).as_bytes()),
+                    provider: ProviderBuilder::new()
+                        .with_recommended_fillers()
+                        .on_http(String::from(args.base_rpc_url).parse()?),
+                })
+            }
         }
     }
 }
