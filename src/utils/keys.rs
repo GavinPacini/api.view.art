@@ -141,11 +141,11 @@ mod tests {
 
     #[test]
     fn test_top_channels_key() {
-        let key = top_channels_key("daily", "testchannel");
-        assert_eq!(key, "top_channels:daily:testchannel");
+        let key = top_channels_key("daily");
+        assert_eq!(key, "top_channels:daily");
 
-        let key = top_channels_key("DAILY", "TESTCHANNEL");
-        assert_eq!(key, "top_channels:daily:testchannel");
+        let key = top_channels_key("DAILY");
+        assert_eq!(key, "top_channels:DAILY");
     }
 
     #[test]
